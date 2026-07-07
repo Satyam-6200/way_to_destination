@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Phase 1 - Camera + GPS Capture Demo</title>
+<style>
+  body {
+    font-family: -apple-system, sans-serif;
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 16px;
+    background: #111;
+    color: #eee;
+  }
+  h2 { font-size: 18px; }
+  video {
+    width: 100%;
+    border-radius: 8px;
+    background: #000;
+  }
+  button {
+    width: 100%;
+    padding: 14px;
+    font-size: 16px;
+    margin-top: 10px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  #startBtn { background: #2e7d32; color: white; }
+  #stopBtn { background: #c62828; color: white; }
+  button:disabled { opacity: 0.4; cursor: not-allowed; }
+  #status {
+    margin-top: 10px;
+    padding: 10px;
+    background: #1e1e1e;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  #log {
+    margin-top: 10px;
+    max-height: 250px;
+    overflow-y: auto;
+    background: #1e1e1e;
+    border-radius: 8px;
+    padding: 8px;
+    font-size: 12px;
+    font-family: monospace;
+  }
+  .point { padding: 4px 0; border-bottom: 1px solid #333; }
+</style>
+</head>
+<body>
+
+<h2>🎥 Phase 1: Camera + GPS Sync Test</h2>
+<video id="preview" autoplay muted playsinline></video>
+
+<button id="startBtn">Start Recording</button>
+<button id="stopBtn" disabled>Stop Recording</button>
+
+<div id="status">Status: idle</div>
+<div id="log"></div>
+
+<script>
+let mediaRecorder;
+let recordedChunks = [];
+let gpsTrail = [];
+let watchId = null;
+let recordStartTime = null;
+let stream = null;
+
+const preview = document.getElementById('preview');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const logEl = document.getElementById('log');
+
+function setStatus(msg) {
+  statusEl.textContent = "Status: " + msg;
+}
+
+function logPoint(point) {
+  const div = document.createElement('div');
+  div.className = 'point';
+  div.textContent = `t=${point.t}ms  lat=${point.lat.toFixed(6)}  lng=${point.lng.toFixed(6)}  acc=${point.accuracy.toFixed(1)}m`;
+  logEl.prepend(div);
+}
+
+async function init() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'environment' }, // back camera on phone
+      audio: false
+    });
+    preview.srcObject = stream;
+    setStatus("camera ready, waiting to start");
+  } catch (err) {
+    setStatus("camera error: " + err.message);
+  }
+}
+
+startBtn.addEventListener('click', () => {
+  if (!stream) {
+    setStatus("camera not ready yet");
+    return;
+  }
+  if (!navigator.geolocation) {
+    setStatus("geolocation not supported");
+    return;
+  }
+
+  recordedChunks = [];
+  gpsTrail = [];
+  logEl.innerHTML = '';
+  recordStartTime = Date.now();
+
+  // Start GPS tracking
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const point = {
+        t: Date.now() - recordStartTime,
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      };
+      gpsTrail.push(point);
+      logPoint(point);
+    },
+    (err) => {
+      setStatus("GPS error: " + err.message);
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 5000
+    }
+  );
+
+  // Start video recording
+  mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: 'video/webm' });
+    const url = URL.createObjectURL(blob);
+
+    // Show playback + download link
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'recording.webm';
+    a.textContent = '⬇ Download recorded video';
+    a.style.display = 'block';
+    a.style.color = '#4fc3f7';
+    a.style.marginTop = '10px';
+    document.body.appendChild(a);
+
+    // Show GPS trail as JSON (this is what we'll send to backend later)
+    const pre = document.createElement('pre');
+    pre.style.background = '#1e1e1e';
+    pre.style.padding = '10px';
+    pre.style.borderRadius = '8px';
+    pre.style.overflowX = 'auto';
+    pre.style.fontSize = '11px';
+    pre.textContent = JSON.stringify(gpsTrail, null, 2);
+    document.body.appendChild(pre);
+
+    setStatus(`stopped. ${gpsTrail.length} GPS points captured, video size: ${(blob.size/1024).toFixed(1)} KB`);
+  };
+
+  mediaRecorder.start(1000); // collect data every 1s
+  setStatus("recording...");
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+});
+
+stopBtn.addEventListener('click', () => {
+  mediaRecorder.stop();
+  navigator.geolocation.clearWatch(watchId);
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+});
+
+init();
+</script>
+
+</body>
+</html>
