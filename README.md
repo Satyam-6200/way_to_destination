@@ -30,3 +30,9 @@ grows as more people record.
 
 ## Log
 - 2026-07-07: Repo initialized, Phase 1 capture demo built.
+- 2026-07-08: Pushed to GitHub, deployed via GitHub Pages, renamed to
+  index.html so it loads as the homepage.
+- 2026-07-08: Phase 1 tested successfully on real device (Xiaomi/Redmi phone,
+  Chrome). Camera + GPS sync confirmed working — 9 GPS points captured over
+  ~12 seconds, 5-6m accuracy, video recorded cleanly (3.6 MB). Core capture
+  logic validated. Ready to move to Phase 2 (chunked upload to backend).
