@@ -1,0 +1,5 @@
+backend/uploads/
+backend/data.db
+backend/server.log
+backend/__pycache__/
+*.pyc
