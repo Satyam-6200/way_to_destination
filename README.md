@@ -113,3 +113,14 @@ Endpoints:
   now roughly 350-400 KB per 5s chunk (~250-300 MB/hour). Quality is still
   fine for the street-view use case (recognizing a path/route), not meant
   to be HD footage.
+- 2026-07-09: Added clear error reporting for video load failures (HTTP
+  status, decode errors) instead of a misleading "autoplay blocked"
+  message — needed to properly diagnose the video playback issue, which
+  turned out to be caused by Render's free-tier ephemeral disk wiping
+  old session data on every redeploy, not a code bug.
+- 2026-07-09: Added offline reverse geocoding using the `reverse_geocoder`
+  library (bundled GeoNames cities1000 dataset, ~7.5MB, public domain).
+  No external API calls — fully self-hosted like the coastline data.
+  New endpoints: `GET /geocode` (single point) and `POST /geocode/batch`
+  (multiple points at once). Map now shows place names (village/district/
+  state) in the status bar and in each point's popup.

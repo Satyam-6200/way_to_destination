@@ -19,6 +19,7 @@ import uuid
 from pathlib import Path
 from datetime import datetime, timezone
 
+import reverse_geocoder as rg
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -200,6 +201,38 @@ def get_chunk_video(session_id: str, chunk_index: int):
         raise HTTPException(status_code=404, detail="Video file missing on disk")
 
     return FileResponse(video_path, media_type="video/webm")
+
+
+@app.get("/geocode")
+def geocode_point(lat: float, lng: float):
+    """Reverse geocode a single coordinate to a place name using offline
+    GeoNames data (no external API call)."""
+    result = rg.search([(lat, lng)])[0]
+    return {
+        "name": result["name"],
+        "admin1": result["admin1"],  # state/province
+        "admin2": result["admin2"],  # district/county
+        "country_code": result["cc"],
+    }
+
+
+@app.post("/geocode/batch")
+def geocode_batch(points: list[dict]):
+    """Reverse geocode multiple coordinates at once (more efficient than
+    calling /geocode in a loop). Body: [{"lat": .., "lng": ..}, ...]"""
+    coords = [(p["lat"], p["lng"]) for p in points]
+    if not coords:
+        return []
+    results = rg.search(coords)
+    return [
+        {
+            "name": r["name"],
+            "admin1": r["admin1"],
+            "admin2": r["admin2"],
+            "country_code": r["cc"],
+        }
+        for r in results
+    ]
 
 
 @app.get("/health")

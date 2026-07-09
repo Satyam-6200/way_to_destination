@@ -227,18 +227,33 @@ async function loadSession(sessionId) {
       }
     });
 
+    // Batch reverse-geocode all points at once (fewer requests than one-by-one)
+    let placeNames = [];
+    try {
+      const geoRes = await fetch(`${BACKEND_URL}/geocode/batch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(allPoints.map(p => ({ lat: p.lat, lng: p.lng })))
+      });
+      if (geoRes.ok) placeNames = await geoRes.json();
+    } catch (err) {
+      // non-critical — markers will just show without place names
+    }
+
     const videoEl = document.getElementById('chunkVideo');
     const videoInfoEl = document.getElementById('videoInfo');
 
     markerLayer = L.layerGroup();
     allPoints.forEach((p, i) => {
+      const place = placeNames[i];
+      const placeText = place ? `${place.name}, ${place.admin2}, ${place.admin1}<br>` : '';
       const marker = L.circleMarker([p.lat, p.lng], {
         radius: 4,
         color: '#66bb6a',
         fillColor: '#66bb6a',
         fillOpacity: 0.9
       }).bindPopup(
-        `<b>Point ${i}</b><br>t=${p.t}ms<br>chunk: ${p.chunk_index}<br>distance so far: ${formatDistance(p.cumulativeDistance)}<br><small>tap marker to play video</small>`
+        `<b>Point ${i}</b><br>${placeText}t=${p.t}ms<br>chunk: ${p.chunk_index}<br>distance so far: ${formatDistance(p.cumulativeDistance)}<br><small>tap marker to play video</small>`
       );
 
       marker.on('click', async () => {
@@ -290,7 +305,9 @@ async function loadSession(sessionId) {
     markerLayer.addTo(map);
 
     map.fitBounds(pathLayer.getBounds(), { padding: [40, 40] });
-    setStatus(`Loaded session ${sessionId} — ${allPoints.length} GPS points, ${data.chunks.length} chunks, total distance: ${formatDistance(totalDistance)}.`);
+    const startPlace = placeNames[0];
+    const placeSummary = startPlace ? ` Near ${startPlace.name}, ${startPlace.admin2}, ${startPlace.admin1}.` : '';
+    setStatus(`Loaded session ${sessionId} — ${allPoints.length} GPS points, ${data.chunks.length} chunks, total distance: ${formatDistance(totalDistance)}.${placeSummary}`);
   } catch (err) {
     setStatus('Error: ' + err.message);
   }
