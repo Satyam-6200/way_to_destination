@@ -140,6 +140,23 @@ function formatDistance(meters) {
   return `${(meters / 1000).toFixed(2)} km`;
 }
 
+// Chrome bug workaround: webm files from MediaRecorder often have duration
+// reported as Infinity (the header doesn't know final length while
+// recording). Seeking directly on such a video can silently fail / freeze
+// the frame. Trick: seek to a huge time first to force Chrome to compute
+// the real duration, then seek to where we actually want.
+function seekVideo(videoEl, desiredTime) {
+  if (isFinite(videoEl.duration) && videoEl.duration > 0) {
+    videoEl.currentTime = desiredTime;
+    return;
+  }
+  const fixDuration = () => {
+    videoEl.currentTime = desiredTime;
+  };
+  videoEl.addEventListener('timeupdate', fixDuration, { once: true });
+  videoEl.currentTime = 1e101;
+}
+
 async function loadSession(sessionId) {
   setStatus('Fetching session data...');
   let url = sessionId
@@ -229,17 +246,18 @@ async function loadSession(sessionId) {
         const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] || p.t)) / 1000);
 
         videoEl.style.display = 'block';
+        videoEl.muted = true; // no audio track exists anyway; helps autoplay policies
         videoInfoEl.textContent = `Playing chunk ${p.chunk_index} (point ${i}, ${formatDistance(p.cumulativeDistance)} into path)...`;
 
         if (videoEl.dataset.currentChunk !== String(p.chunk_index)) {
           videoEl.src = videoUrl;
           videoEl.dataset.currentChunk = String(p.chunk_index);
           videoEl.addEventListener('loadedmetadata', function seekOnce() {
-            videoEl.currentTime = offsetSeconds;
+            seekVideo(videoEl, offsetSeconds);
             videoEl.removeEventListener('loadedmetadata', seekOnce);
           });
         } else {
-          videoEl.currentTime = offsetSeconds;
+          seekVideo(videoEl, offsetSeconds);
         }
         videoEl.play().catch(() => {
           videoInfoEl.textContent += ' (tap play button — autoplay blocked)';

@@ -84,3 +84,8 @@ Endpoints:
   standalone files except the first one. Switched to restarting the
   recorder for every chunk, so each chunk is now a complete, playable
   video file on its own.
+- 2026-07-09: Fixed a second video bug — Chrome reports Infinity duration
+  for MediaRecorder webm files (header doesn't know final length while
+  recording), which silently breaks seeking/rendering. Added the standard
+  workaround: seek to a huge timestamp first to force Chrome to compute
+  the real duration, then seek to the actual target time.
