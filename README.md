@@ -89,3 +89,9 @@ Endpoints:
   recording), which silently breaks seeking/rendering. Added the standard
   workaround: seek to a huge timestamp first to force Chrome to compute
   the real duration, then seek to the actual target time.
+- 2026-07-09: Cut data usage significantly — capture resolution reduced to
+  640x480 and bitrate capped at 600kbps. Was ~1.3-1.5 MB per 5s chunk
+  (~1 GB/hour) which is unsustainable for users recording on mobile data;
+  now roughly 350-400 KB per 5s chunk (~250-300 MB/hour). Quality is still
+  fine for the street-view use case (recognizing a path/route), not meant
+  to be HD footage.

@@ -109,7 +109,11 @@ function logLine(text, cls) {
 async function init() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' },
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      },
       audio: false
     });
     preview.srcObject = stream;
@@ -147,7 +151,10 @@ const CHUNK_DURATION_MS = 5000;
 function recordOneChunk() {
   if (!isRecording) return;
 
-  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+  const recorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp8',
+    videoBitsPerSecond: 600000 // ~600 kbps — cuts data usage a lot, still watchable for a "street view" purpose
+  });
   const parts = [];
   const pointsForThisChunk = gpsBuffer;
   gpsBuffer = []; // reset buffer for next chunk
