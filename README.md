@@ -79,3 +79,8 @@ Endpoints:
   moment in that chunk's video, right in the map page.
 - 2026-07-09: Fixed git author email so commits count toward GitHub
   contribution graph (was using a placeholder local email before).
+- 2026-07-09: Fixed broken chunk video playback — MediaRecorder was being
+  used with a timeslice, which produces webm fragments that aren't valid
+  standalone files except the first one. Switched to restarting the
+  recorder for every chunk, so each chunk is now a complete, playable
+  video file on its own.

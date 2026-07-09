@@ -140,6 +140,48 @@ async function uploadChunk(blob, index, points) {
   return res.json();
 }
 
+let isRecording = false;
+let chunkTimer = null;
+const CHUNK_DURATION_MS = 5000;
+
+function recordOneChunk() {
+  if (!isRecording) return;
+
+  const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+  const parts = [];
+  const pointsForThisChunk = gpsBuffer;
+  gpsBuffer = []; // reset buffer for next chunk
+  const thisIndex = chunkIndex++;
+
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) parts.push(e.data);
+  };
+
+  recorder.onstop = async () => {
+    const blob = new Blob(parts, { type: 'video/webm' });
+    try {
+      const result = await uploadChunk(blob, thisIndex, pointsForThisChunk);
+      chunksUploaded++;
+      totalPointsSent += result.points_received;
+      logLine(`✓ chunk ${thisIndex} uploaded — ${result.points_received} GPS points, ${(result.video_size_bytes/1024).toFixed(1)} KB`, 'chunk-ok');
+      setStatus(`recording... ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent`);
+    } catch (err) {
+      logLine(`✗ chunk ${thisIndex} FAILED: ${err.message}`, 'chunk-fail');
+    }
+
+    // Start the next chunk's recording right away (small gap is fine)
+    if (isRecording) {
+      recordOneChunk();
+    }
+  };
+
+  mediaRecorder = recorder;
+  recorder.start();
+  chunkTimer = setTimeout(() => {
+    if (recorder.state !== 'inactive') recorder.stop();
+  }, CHUNK_DURATION_MS);
+}
+
 startBtn.addEventListener('click', async () => {
   if (!stream) {
     setStatus("camera not ready yet");
@@ -184,33 +226,18 @@ startBtn.addEventListener('click', async () => {
     { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
 
-  mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-
-  mediaRecorder.ondataavailable = async (e) => {
-    if (e.data.size === 0) return;
-
-    const pointsForThisChunk = gpsBuffer;
-    gpsBuffer = []; // reset buffer for next chunk
-    const thisIndex = chunkIndex++;
-
-    try {
-      const result = await uploadChunk(e.data, thisIndex, pointsForThisChunk);
-      chunksUploaded++;
-      totalPointsSent += result.points_received;
-      logLine(`✓ chunk ${thisIndex} uploaded — ${result.points_received} GPS points, ${(result.video_size_bytes/1024).toFixed(1)} KB`, 'chunk-ok');
-      setStatus(`recording... ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent`);
-    } catch (err) {
-      logLine(`✗ chunk ${thisIndex} FAILED: ${err.message}`, 'chunk-fail');
-    }
-  };
-
-  mediaRecorder.start(5000); // cut a chunk every 5 seconds and upload it live
+  isRecording = true;
+  recordOneChunk();
   setStatus("recording...");
   stopBtn.disabled = false;
 });
 
 stopBtn.addEventListener('click', () => {
-  mediaRecorder.stop();
+  isRecording = false;
+  clearTimeout(chunkTimer);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
   navigator.geolocation.clearWatch(watchId);
   stopBtn.disabled = true;
   startBtn.disabled = false;
