@@ -241,12 +241,27 @@ async function loadSession(sessionId) {
         `<b>Point ${i}</b><br>t=${p.t}ms<br>chunk: ${p.chunk_index}<br>distance so far: ${formatDistance(p.cumulativeDistance)}<br><small>tap marker to play video</small>`
       );
 
-      marker.on('click', () => {
+      marker.on('click', async () => {
         const videoUrl = `${BACKEND_URL}/session/${sessionId}/chunk/${p.chunk_index}/video`;
         const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] || p.t)) / 1000);
 
         videoEl.style.display = 'block';
-        videoEl.muted = true; // no audio track exists anyway; helps autoplay policies
+        videoEl.muted = true;
+        videoInfoEl.textContent = `Checking video for chunk ${p.chunk_index}...`;
+
+        // Check the video actually exists before trying to play it — a
+        // clear error is much more useful than a silent "autoplay blocked".
+        try {
+          const check = await fetch(videoUrl, { method: 'GET', headers: { Range: 'bytes=0-1' } });
+          if (!check.ok && check.status !== 206) {
+            videoInfoEl.textContent = `⚠ Video not found (HTTP ${check.status}). This session's data was likely cleared by a backend redeploy (Render's free disk resets on every deploy). Record a fresh session to test.`;
+            return;
+          }
+        } catch (err) {
+          videoInfoEl.textContent = `⚠ Could not reach backend: ${err.message}`;
+          return;
+        }
+
         videoInfoEl.textContent = `Playing chunk ${p.chunk_index} (point ${i}, ${formatDistance(p.cumulativeDistance)} into path)...`;
 
         if (videoEl.dataset.currentChunk !== String(p.chunk_index)) {
@@ -263,6 +278,12 @@ async function loadSession(sessionId) {
           videoInfoEl.textContent += ' (tap play button — autoplay blocked)';
         });
       });
+
+      videoEl.onerror = () => {
+        const err = videoEl.error;
+        const reasons = { 1: 'aborted', 2: 'network error', 3: 'decode error (corrupt/unsupported file)', 4: 'format not supported' };
+        if (err) videoInfoEl.textContent = `⚠ Video error: ${reasons[err.code] || err.code}`;
+      };
 
       markerLayer.addLayer(marker);
     });
