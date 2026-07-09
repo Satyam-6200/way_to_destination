@@ -21,6 +21,7 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 BASE_DIR = Path(__file__).parent
 UPLOAD_DIR = BASE_DIR / "uploads"
@@ -179,6 +180,26 @@ def list_sessions():
     ).fetchall()
     conn.close()
     return [dict(s) for s in sessions]
+
+
+@app.get("/session/{session_id}/chunk/{chunk_index}/video")
+def get_chunk_video(session_id: str, chunk_index: int):
+    """Serve the actual video file for one chunk (used for click-to-seek playback)."""
+    conn = get_db()
+    chunk = conn.execute(
+        "SELECT video_path FROM chunks WHERE session_id = ? AND chunk_index = ?",
+        (session_id, chunk_index),
+    ).fetchone()
+    conn.close()
+
+    if not chunk:
+        raise HTTPException(status_code=404, detail="Chunk not found")
+
+    video_path = BASE_DIR / chunk["video_path"]
+    if not video_path.exists():
+        raise HTTPException(status_code=404, detail="Video file missing on disk")
+
+    return FileResponse(video_path, media_type="video/webm")
 
 
 @app.get("/health")

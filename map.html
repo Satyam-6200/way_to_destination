@@ -47,11 +47,28 @@
     color: #9aa5b8;
   }
   #map {
-    height: calc(100vh - 110px);
+    height: calc(100vh - 260px);
     width: 100%;
     background: #0b0f1a;
   }
   .leaflet-container { background: #0b0f1a; }
+  #videoPanel {
+    padding: 10px 16px;
+    background: #0d1420;
+    border-bottom: 1px solid #232b3d;
+  }
+  #chunkVideo {
+    width: 100%;
+    max-height: 160px;
+    border-radius: 6px;
+    background: #000;
+    display: none;
+  }
+  #videoInfo {
+    font-size: 12px;
+    color: #9aa5b8;
+    margin-top: 6px;
+  }
 </style>
 </head>
 <body>
@@ -64,6 +81,10 @@
   </div>
 </div>
 <div id="status">Enter a session_id from a recording, or click Load to fetch the most recent session.</div>
+<div id="videoPanel">
+  <video id="chunkVideo" controls playsinline></video>
+  <div id="videoInfo">Click a point on the path to play its video.</div>
+</div>
 <div id="map"></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
@@ -181,6 +202,17 @@ async function loadSession(sessionId) {
       opacity: 0.85
     }).addTo(map);
 
+    // Track the first timestamp of each chunk so we can seek within its video
+    const chunkStartTime = {};
+    data.chunks.forEach(chunk => {
+      if (chunk.gps_points.length > 0) {
+        chunkStartTime[chunk.chunk_index] = chunk.gps_points[0].t;
+      }
+    });
+
+    const videoEl = document.getElementById('chunkVideo');
+    const videoInfoEl = document.getElementById('videoInfo');
+
     markerLayer = L.layerGroup();
     allPoints.forEach((p, i) => {
       const marker = L.circleMarker([p.lat, p.lng], {
@@ -189,8 +221,31 @@ async function loadSession(sessionId) {
         fillColor: '#66bb6a',
         fillOpacity: 0.9
       }).bindPopup(
-        `<b>Point ${i}</b><br>t=${p.t}ms<br>chunk: ${p.chunk_index}<br>video: ${p.video_path}<br>accuracy: ${p.accuracy.toFixed(1)}m<br>distance so far: ${formatDistance(p.cumulativeDistance)}`
+        `<b>Point ${i}</b><br>t=${p.t}ms<br>chunk: ${p.chunk_index}<br>distance so far: ${formatDistance(p.cumulativeDistance)}<br><small>tap marker to play video</small>`
       );
+
+      marker.on('click', () => {
+        const videoUrl = `${BACKEND_URL}/session/${sessionId}/chunk/${p.chunk_index}/video`;
+        const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] || p.t)) / 1000);
+
+        videoEl.style.display = 'block';
+        videoInfoEl.textContent = `Playing chunk ${p.chunk_index} (point ${i}, ${formatDistance(p.cumulativeDistance)} into path)...`;
+
+        if (videoEl.dataset.currentChunk !== String(p.chunk_index)) {
+          videoEl.src = videoUrl;
+          videoEl.dataset.currentChunk = String(p.chunk_index);
+          videoEl.addEventListener('loadedmetadata', function seekOnce() {
+            videoEl.currentTime = offsetSeconds;
+            videoEl.removeEventListener('loadedmetadata', seekOnce);
+          });
+        } else {
+          videoEl.currentTime = offsetSeconds;
+        }
+        videoEl.play().catch(() => {
+          videoInfoEl.textContent += ' (tap play button — autoplay blocked)';
+        });
+      });
+
       markerLayer.addLayer(marker);
     });
     markerLayer.addTo(map);

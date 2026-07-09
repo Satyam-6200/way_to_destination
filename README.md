@@ -24,7 +24,10 @@ grows as more people record.
       (self-hosted public-domain GeoJSON in `data/world.geo.json` — no
       Google/OSM tile dependency), draws the recorded GPS path as a polyline,
       and shows a clickable marker per GPS point with chunk info.
-- [ ] **Phase 4** — Click-to-seek: clicking a point on the path jumps video to that timestamp
+- [x] **Phase 4** — Click-to-seek (`map.html` + backend video endpoint)
+      Backend serves individual chunk videos (`GET /session/{id}/chunk/{n}/video`).
+      Clicking a point on the map loads that point's chunk video and seeks
+      to the right moment within it.
 - [ ] **Phase 5** — Multiple users/paths overlaid on one shared map
 
 ## Stack (planned)
@@ -65,7 +68,14 @@ Endpoints:
   points, all uploaded successfully with zero failures. Full pipeline
   (camera -> GPS sync -> chunked upload -> backend storage) confirmed
   working live over network. Ready for Phase 3 (map rendering).
-- 2026-07-08: Phase 3 map viewer built (map.html). Uses Leaflet purely as a
+- 2026-07-09: Phase 3 map viewer built (map.html). Uses Leaflet purely as a
   rendering library (no Google/Mapbox tile service) — background is a
   self-hosted, public-domain coastline outline. Fetches a session's GPS
   trail from the backend and draws it as a path with clickable points.
+- 2026-07-09: Added haversine distance calculation — total path distance
+  shown in status bar, cumulative distance shown per point.
+- 2026-07-09: Phase 4 — click-to-seek. Backend now serves individual chunk
+  video files. Clicking a marker on the map loads and seeks to the right
+  moment in that chunk's video, right in the map page.
+- 2026-07-09: Fixed git author email so commits count toward GitHub
+  contribution graph (was using a placeholder local email before).
