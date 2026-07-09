@@ -17,7 +17,8 @@ grows as more people record.
       Tested successfully on real device — 5-6m GPS accuracy, clean sync.
 - [x] **Phase 2** — Chunked upload backend (`backend/main.py`)
       FastAPI server: start a session, upload video chunks + GPS points per
-      chunk, retrieve full session data. Tested locally — working.
+      chunk, retrieve full session data. Deployed on Render, tested live on
+      real device — 9 chunks, 47 GPS points, zero failures.
 - [ ] **Phase 3** — Draw a single recorded path on a map (Leaflet + coastline data)
 - [ ] **Phase 4** — Click-to-seek: clicking a point on the path jumps video to that timestamp
 - [ ] **Phase 5** — Multiple users/paths overlaid on one shared map
@@ -54,3 +55,9 @@ Endpoints:
   Session start, chunked video upload with GPS metadata, and retrieval all
   working. Next: connect frontend to actually upload chunks live, and deploy
   backend somewhere reachable (Render/Railway free tier).
+- 2026-07-08: Backend deployed to Render (way-to-destination.onrender.com).
+  Frontend updated to upload real chunks every 5s during recording.
+  Tested end-to-end on real device: 9 chunks (~1.3-1.5 MB each), 47 GPS
+  points, all uploaded successfully with zero failures. Full pipeline
+  (camera -> GPS sync -> chunked upload -> backend storage) confirmed
+  working live over network. Ready for Phase 3 (map rendering).
