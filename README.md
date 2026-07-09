@@ -30,11 +30,29 @@ grows as more people record.
       to the right moment within it.
 - [ ] **Phase 5** — Multiple users/paths overlaid on one shared map
 
-## Stack (planned)
-- Frontend: React (Phase 1 is plain HTML/JS for quick testing)
-- Backend: FastAPI
-- Storage: S3-compatible object storage for video chunks, Postgres + PostGIS for metadata
-- Map: Leaflet + Natural Earth coastline GeoJSON (no Google/Mapbox dependency)
+## Tech Stack
+
+**Currently in use:**
+| Layer | Tech | Notes |
+|---|---|---|
+| Recording UI | Vanilla HTML/JS | `index.html` — camera + GPS capture, chunked upload |
+| Map viewer | Vanilla HTML/JS + [Leaflet](https://leafletjs.com/) | `map.html` — Leaflet used only as a rendering engine, no Google/Mapbox tiles |
+| Base map reference | Self-hosted GeoJSON | `data/world.geo.json` — public-domain coastline outline (not a live tile service) |
+| Backend API | [FastAPI](https://fastapi.tiangolo.com/) (Python) | `backend/main.py` — session + chunk upload/retrieval endpoints |
+| Database | SQLite | `backend/data.db` — sessions + chunk metadata (GPS points as JSON) |
+| Video storage | Local disk | `backend/uploads/{session_id}/chunk_N.webm` |
+| Video codec | WebM (VP8) via `MediaRecorder` | Captured at 640x480, ~600kbps |
+| Backend hosting | [Render](https://render.com) (free tier) | `way-to-destination.onrender.com` — ⚠️ free tier disk is ephemeral, wipes on every redeploy |
+| Frontend hosting | GitHub Pages | Auto-deploys from `main` branch |
+| Version control | Git + GitHub | `github.com/Satyam-6200/way_to_destination` |
+
+**Planned (future phases):**
+| Layer | Tech | Why |
+|---|---|---|
+| Frontend framework | React | Once UI complexity grows past a few pages |
+| Object storage | S3-compatible (e.g. Cloudflare R2 / Backblaze B2) | Persistent video storage, replaces ephemeral Render disk |
+| Database | PostgreSQL + PostGIS | Proper geospatial queries (nearby paths, coverage area) at scale |
+| Reverse geocoding | Self-hosted GeoNames (public domain) | Show place names for coordinates, fully offline/independent |
 
 ## Backend (Phase 2)
 
