@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Phase 1 - Camera + GPS Capture Demo</title>
+<title>Phase 2 - Live Upload Test</title>
 <style>
   body {
     font-family: -apple-system, sans-serif;
@@ -38,6 +38,15 @@
     border-radius: 8px;
     font-size: 13px;
   }
+  #sessionInfo {
+    margin-top: 6px;
+    padding: 10px;
+    background: #16213a;
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: monospace;
+    word-break: break-all;
+  }
   #log {
     margin-top: 10px;
     max-height: 250px;
@@ -49,48 +58,58 @@
     font-family: monospace;
   }
   .point { padding: 4px 0; border-bottom: 1px solid #333; }
+  .chunk-ok { color: #66bb6a; }
+  .chunk-fail { color: #ef5350; }
 </style>
 </head>
 <body>
 
-<h2>🎥 Phase 1: Camera + GPS Sync Test</h2>
+<h2>🎥 Phase 2: Live Chunked Upload Test</h2>
 <video id="preview" autoplay muted playsinline></video>
 
 <button id="startBtn">Start Recording</button>
 <button id="stopBtn" disabled>Stop Recording</button>
 
 <div id="status">Status: idle</div>
+<div id="sessionInfo">No session yet</div>
 <div id="log"></div>
 
 <script>
+// Backend URL — change this if you redeploy elsewhere
+const BACKEND_URL = "https://way-to-destination.onrender.com";
+
 let mediaRecorder;
-let recordedChunks = [];
-let gpsTrail = [];
+let gpsBuffer = [];   // points since the last chunk was cut
 let watchId = null;
 let recordStartTime = null;
 let stream = null;
+let sessionId = null;
+let chunkIndex = 0;
+let chunksUploaded = 0;
+let totalPointsSent = 0;
 
 const preview = document.getElementById('preview');
 const startBtn = document.getElementById('startBtn');
 const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
+const sessionInfoEl = document.getElementById('sessionInfo');
 const logEl = document.getElementById('log');
 
 function setStatus(msg) {
   statusEl.textContent = "Status: " + msg;
 }
 
-function logPoint(point) {
+function logLine(text, cls) {
   const div = document.createElement('div');
-  div.className = 'point';
-  div.textContent = `t=${point.t}ms  lat=${point.lat.toFixed(6)}  lng=${point.lng.toFixed(6)}  acc=${point.accuracy.toFixed(1)}m`;
+  div.className = 'point' + (cls ? ' ' + cls : '');
+  div.textContent = text;
   logEl.prepend(div);
 }
 
 async function init() {
   try {
     stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'environment' }, // back camera on phone
+      video: { facingMode: 'environment' },
       audio: false
     });
     preview.srcObject = stream;
@@ -100,7 +119,28 @@ async function init() {
   }
 }
 
-startBtn.addEventListener('click', () => {
+async function startSession() {
+  const res = await fetch(`${BACKEND_URL}/session/start`, { method: 'POST' });
+  if (!res.ok) throw new Error(`session/start failed: ${res.status}`);
+  const data = await res.json();
+  return data.session_id;
+}
+
+async function uploadChunk(blob, index, points) {
+  const form = new FormData();
+  form.append('chunk_index', index);
+  form.append('gps_points', JSON.stringify(points));
+  form.append('video', blob, `chunk_${index}.webm`);
+
+  const res = await fetch(`${BACKEND_URL}/session/${sessionId}/chunk`, {
+    method: 'POST',
+    body: form
+  });
+  if (!res.ok) throw new Error(`chunk ${index} upload failed: ${res.status}`);
+  return res.json();
+}
+
+startBtn.addEventListener('click', async () => {
   if (!stream) {
     setStatus("camera not ready yet");
     return;
@@ -110,76 +150,73 @@ startBtn.addEventListener('click', () => {
     return;
   }
 
-  recordedChunks = [];
-  gpsTrail = [];
+  startBtn.disabled = true;
+  setStatus("starting session on backend... (may take ~30s if server is waking up)");
+
+  try {
+    sessionId = await startSession();
+  } catch (err) {
+    setStatus("could not start session: " + err.message + " — check backend is awake/reachable");
+    startBtn.disabled = false;
+    return;
+  }
+
+  sessionInfoEl.textContent = `session_id: ${sessionId}`;
+  gpsBuffer = [];
   logEl.innerHTML = '';
+  chunkIndex = 0;
+  chunksUploaded = 0;
+  totalPointsSent = 0;
   recordStartTime = Date.now();
 
-  // Start GPS tracking
   watchId = navigator.geolocation.watchPosition(
     (pos) => {
-      const point = {
+      gpsBuffer.push({
         t: Date.now() - recordStartTime,
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
         accuracy: pos.coords.accuracy
-      };
-      gpsTrail.push(point);
-      logPoint(point);
+      });
     },
     (err) => {
-      setStatus("GPS error: " + err.message);
+      logLine("GPS error: " + err.message, 'chunk-fail');
     },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 0,
-      timeout: 5000
-    }
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
   );
 
-  // Start video recording
   mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) recordedChunks.push(e.data);
-  };
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(recordedChunks, { type: 'video/webm' });
-    const url = URL.createObjectURL(blob);
 
-    // Show playback + download link
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'recording.webm';
-    a.textContent = '⬇ Download recorded video';
-    a.style.display = 'block';
-    a.style.color = '#4fc3f7';
-    a.style.marginTop = '10px';
-    document.body.appendChild(a);
+  mediaRecorder.ondataavailable = async (e) => {
+    if (e.data.size === 0) return;
 
-    // Show GPS trail as JSON (this is what we'll send to backend later)
-    const pre = document.createElement('pre');
-    pre.style.background = '#1e1e1e';
-    pre.style.padding = '10px';
-    pre.style.borderRadius = '8px';
-    pre.style.overflowX = 'auto';
-    pre.style.fontSize = '11px';
-    pre.textContent = JSON.stringify(gpsTrail, null, 2);
-    document.body.appendChild(pre);
+    const pointsForThisChunk = gpsBuffer;
+    gpsBuffer = []; // reset buffer for next chunk
+    const thisIndex = chunkIndex++;
 
-    setStatus(`stopped. ${gpsTrail.length} GPS points captured, video size: ${(blob.size/1024).toFixed(1)} KB`);
+    try {
+      const result = await uploadChunk(e.data, thisIndex, pointsForThisChunk);
+      chunksUploaded++;
+      totalPointsSent += result.points_received;
+      logLine(`✓ chunk ${thisIndex} uploaded — ${result.points_received} GPS points, ${(result.video_size_bytes/1024).toFixed(1)} KB`, 'chunk-ok');
+      setStatus(`recording... ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent`);
+    } catch (err) {
+      logLine(`✗ chunk ${thisIndex} FAILED: ${err.message}`, 'chunk-fail');
+    }
   };
 
-  mediaRecorder.start(1000); // collect data every 1s
+  mediaRecorder.start(5000); // cut a chunk every 5 seconds and upload it live
   setStatus("recording...");
-  startBtn.disabled = true;
   stopBtn.disabled = false;
 });
 
 stopBtn.addEventListener('click', () => {
   mediaRecorder.stop();
   navigator.geolocation.clearWatch(watchId);
-  startBtn.disabled = false;
   stopBtn.disabled = true;
+  startBtn.disabled = false;
+  setTimeout(() => {
+    setStatus(`stopped. Total: ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent. Session: ${sessionId}`);
+  }, 1500); // small delay to let the last chunk's upload finish/log
 });
 
 init();
