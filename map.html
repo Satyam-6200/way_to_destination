@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>way_to_destination — Map</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+  body {
+    font-family: -apple-system, sans-serif;
+    margin: 0;
+    background: #0b0f1a;
+    color: #eee;
+  }
+  #header {
+    padding: 12px 16px;
+    background: #111827;
+    border-bottom: 1px solid #232b3d;
+  }
+  #header h2 { margin: 0 0 8px 0; font-size: 16px; }
+  #controls {
+    display: flex;
+    gap: 8px;
+  }
+  #sessionInput {
+    flex: 1;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #333;
+    background: #1a2232;
+    color: #eee;
+    font-size: 13px;
+  }
+  #loadBtn {
+    padding: 10px 16px;
+    border-radius: 6px;
+    border: none;
+    background: #2e7d32;
+    color: white;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  #status {
+    padding: 8px 16px;
+    background: #1a2232;
+    font-size: 12px;
+    color: #9aa5b8;
+  }
+  #map {
+    height: calc(100vh - 110px);
+    width: 100%;
+    background: #0b0f1a;
+  }
+  .leaflet-container { background: #0b0f1a; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <h2>🗺️ way_to_destination — recorded path viewer</h2>
+  <div id="controls">
+    <input id="sessionInput" type="text" placeholder="Paste session_id here (or leave blank for most recent)" />
+    <button id="loadBtn">Load</button>
+  </div>
+</div>
+<div id="status">Enter a session_id from a recording, or click Load to fetch the most recent session.</div>
+<div id="map"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script>
+const BACKEND_URL = "https://way-to-destination.onrender.com";
+
+const statusEl = document.getElementById('status');
+const sessionInput = document.getElementById('sessionInput');
+const loadBtn = document.getElementById('loadBtn');
+
+function setStatus(msg) {
+  statusEl.textContent = msg;
+}
+
+// Base map: no tile layer (no Google/OSM raster tiles). Just a plain
+// coordinate canvas + our own downloaded coastline outline for context.
+const map = L.map('map', {
+  worldCopyJump: true
+}).setView([22.5, 82.0], 4); // rough center on India by default
+
+let coastlineLayer = null;
+let pathLayer = null;
+let markerLayer = null;
+
+fetch('data/world.geo.json')
+  .then(r => r.json())
+  .then(geo => {
+    coastlineLayer = L.geoJSON(geo, {
+      style: {
+        color: '#3a4a63',
+        weight: 1,
+        fillColor: '#151d2e',
+        fillOpacity: 1
+      }
+    }).addTo(map);
+  })
+  .catch(err => setStatus('Could not load coastline outline: ' + err.message));
+
+async function loadSession(sessionId) {
+  setStatus('Fetching session data...');
+  let url = sessionId
+    ? `${BACKEND_URL}/session/${sessionId}`
+    : null;
+
+  try {
+    if (!sessionId) {
+      // No session given — fetch list and use the most recent one
+      const listRes = await fetch(`${BACKEND_URL}/sessions`);
+      if (!listRes.ok) throw new Error(`sessions list failed: ${listRes.status}`);
+      const sessions = await listRes.json();
+      if (sessions.length === 0) {
+        setStatus('No sessions found on backend yet. Record something first.');
+        return;
+      }
+      sessionId = sessions[0].session_id;
+      sessionInput.value = sessionId;
+      url = `${BACKEND_URL}/session/${sessionId}`;
+    }
+
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`session fetch failed: ${res.status}`);
+    const data = await res.json();
+
+    // Flatten all GPS points from all chunks, in order
+    const allPoints = [];
+    data.chunks.forEach(chunk => {
+      chunk.gps_points.forEach(p => {
+        allPoints.push({ ...p, chunk_index: chunk.chunk_index, video_path: chunk.video_path });
+      });
+    });
+
+    if (allPoints.length === 0) {
+      setStatus('This session has no GPS points recorded.');
+      return;
+    }
+
+    // Clear previous layers
+    if (pathLayer) map.removeLayer(pathLayer);
+    if (markerLayer) map.removeLayer(markerLayer);
+
+    const latlngs = allPoints.map(p => [p.lat, p.lng]);
+
+    pathLayer = L.polyline(latlngs, {
+      color: '#4fc3f7',
+      weight: 4,
+      opacity: 0.85
+    }).addTo(map);
+
+    markerLayer = L.layerGroup();
+    allPoints.forEach((p, i) => {
+      const marker = L.circleMarker([p.lat, p.lng], {
+        radius: 4,
+        color: '#66bb6a',
+        fillColor: '#66bb6a',
+        fillOpacity: 0.9
+      }).bindPopup(
+        `<b>Point ${i}</b><br>t=${p.t}ms<br>chunk: ${p.chunk_index}<br>video: ${p.video_path}<br>accuracy: ${p.accuracy.toFixed(1)}m`
+      );
+      markerLayer.addLayer(marker);
+    });
+    markerLayer.addTo(map);
+
+    map.fitBounds(pathLayer.getBounds(), { padding: [40, 40] });
+    setStatus(`Loaded session ${sessionId} — ${allPoints.length} GPS points across ${data.chunks.length} chunks.`);
+  } catch (err) {
+    setStatus('Error: ' + err.message);
+  }
+}
+
+loadBtn.addEventListener('click', () => {
+  loadSession(sessionInput.value.trim() || null);
+});
+</script>
+
+</body>
+</html>

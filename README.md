@@ -19,7 +19,11 @@ grows as more people record.
       FastAPI server: start a session, upload video chunks + GPS points per
       chunk, retrieve full session data. Deployed on Render, tested live on
       real device — 9 chunks, 47 GPS points, zero failures.
-- [ ] **Phase 3** — Draw a single recorded path on a map (Leaflet + coastline data)
+- [x] **Phase 3** — Map viewer (`map.html`)
+      Renders a plain coordinate canvas with a lightweight coastline outline
+      (self-hosted public-domain GeoJSON in `data/world.geo.json` — no
+      Google/OSM tile dependency), draws the recorded GPS path as a polyline,
+      and shows a clickable marker per GPS point with chunk info.
 - [ ] **Phase 4** — Click-to-seek: clicking a point on the path jumps video to that timestamp
 - [ ] **Phase 5** — Multiple users/paths overlaid on one shared map
 
@@ -61,3 +65,7 @@ Endpoints:
   points, all uploaded successfully with zero failures. Full pipeline
   (camera -> GPS sync -> chunked upload -> backend storage) confirmed
   working live over network. Ready for Phase 3 (map rendering).
+- 2026-07-08: Phase 3 map viewer built (map.html). Uses Leaflet purely as a
+  rendering library (no Google/Mapbox tile service) — background is a
+  self-hosted, public-domain coastline outline. Fetches a session's GPS
+  trail from the backend and draws it as a path with clickable points.
