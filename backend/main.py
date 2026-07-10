@@ -32,7 +32,7 @@ from fastapi.middleware.cors import CORSMiddleware
 DATABASE_URL = os.environ["DATABASE_URL"]
 SUPABASE_URL = os.environ["SUPABASE_URL"]
 SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
-VIDEO_BUCKET = "videos"
+VIDEO_BUCKET = "way to destination"
 
 app = FastAPI(title="way_to_destination backend")
 
