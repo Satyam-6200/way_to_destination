@@ -52,6 +52,7 @@ grows as more people record.
 |---|---|---|
 | Frontend framework | React | Once UI complexity grows past a few pages |
 | Database extension | PostGIS | Proper geospatial queries (nearby paths, coverage area) at scale |
+| User-entered location name | Optional text field at recording time | GeoNames cities1000 only has larger towns, so auto-detected names are often the nearest big town, not the actual village (e.g. showed "Bariarpur, Munger" for a point actually in Jhanjhra, Khagaria). Letting the recording user type the real local place name would be more accurate than reverse geocoding for rural areas. |
 
 ### Backend environment variables (Render → Settings → Environment)
 Required for the backend to start — set these in Render's dashboard, never
