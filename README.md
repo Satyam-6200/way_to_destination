@@ -39,10 +39,11 @@ grows as more people record.
 | Map viewer | Vanilla HTML/JS + [Leaflet](https://leafletjs.com/) | `map.html` — Leaflet used only as a rendering engine, no Google/Mapbox tiles |
 | Base map reference | Self-hosted GeoJSON | `data/world.geo.json` — public-domain coastline outline (not a live tile service) |
 | Backend API | [FastAPI](https://fastapi.tiangolo.com/) (Python) | `backend/main.py` — session + chunk upload/retrieval endpoints |
-| Database | SQLite | `backend/data.db` — sessions + chunk metadata (GPS points as JSON) |
-| Video storage | Local disk | `backend/uploads/{session_id}/chunk_N.webm` |
+| Database | PostgreSQL ([Supabase](https://supabase.com)) | Sessions + chunk metadata (GPS points as JSON), persistent |
+| Video storage | Supabase Storage (S3-compatible) | Public bucket `videos/{session_id}/chunk_N.webm`, persistent |
+| Reverse geocoding | Self-hosted GeoNames (`reverse_geocoder` lib) | Offline place names, no external API calls |
 | Video codec | WebM (VP8) via `MediaRecorder` | Captured at 640x480, ~600kbps |
-| Backend hosting | [Render](https://render.com) (free tier) | `way-to-destination.onrender.com` — ⚠️ free tier disk is ephemeral, wipes on every redeploy |
+| Backend hosting | [Render](https://render.com) (free tier) | `way-to-destination.onrender.com` — code/compute only now; all data lives in Supabase, so redeploys/spin-downs no longer wipe anything |
 | Frontend hosting | GitHub Pages | Auto-deploys from `main` branch |
 | Version control | Git + GitHub | `github.com/Satyam-6200/way_to_destination` |
 
@@ -50,9 +51,14 @@ grows as more people record.
 | Layer | Tech | Why |
 |---|---|---|
 | Frontend framework | React | Once UI complexity grows past a few pages |
-| Object storage | S3-compatible (e.g. Cloudflare R2 / Backblaze B2) | Persistent video storage, replaces ephemeral Render disk |
-| Database | PostgreSQL + PostGIS | Proper geospatial queries (nearby paths, coverage area) at scale |
-| Reverse geocoding | Self-hosted GeoNames (public domain) | Show place names for coordinates, fully offline/independent |
+| Database extension | PostGIS | Proper geospatial queries (nearby paths, coverage area) at scale |
+
+### Backend environment variables (Render → Settings → Environment)
+Required for the backend to start — set these in Render's dashboard, never
+commit real values to the repo:
+- `DATABASE_URL` — Supabase Postgres connection string (Transaction pooler URI)
+- `SUPABASE_URL` — e.g. `https://xxxx.supabase.co`
+- `SUPABASE_SERVICE_KEY` — the Supabase **service_role** secret key (not the anon key)
 
 ## Backend (Phase 2)
 
@@ -124,3 +130,11 @@ Endpoints:
   New endpoints: `GET /geocode` (single point) and `POST /geocode/batch`
   (multiple points at once). Map now shows place names (village/district/
   state) in the status bar and in each point's popup.
+- 2026-07-09: Migrated storage off Render's ephemeral disk. Confirmed via
+  Render's own docs that free-tier disk is wiped on every redeploy,
+  restart, AND spin-down (15 min idle) — not just deploys, which explained
+  the repeated "video not found" issue. Now using Supabase: Postgres for
+  session/chunk metadata, Supabase Storage (S3-compatible, public bucket)
+  for video files. Render is now compute-only; all data survives restarts.
+  Credentials are read from environment variables set in Render's
+  dashboard, never committed to the repo.

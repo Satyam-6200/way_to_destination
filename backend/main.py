@@ -1,38 +1,41 @@
 """
-Phase 2 backend — accepts video chunks + GPS metadata, stores them.
+Backend — accepts video chunks + GPS metadata, stores them PERSISTENTLY.
 
-Each recording session has a unique session_id (generated client-side or
-server-side). Video is uploaded in small chunks (e.g. every 5-10 seconds)
-along with the GPS points captured during that chunk's time window.
+Storage:
+  - Video chunks -> Supabase Storage (S3-compatible object storage)
+  - Metadata     -> Postgres (Supabase-hosted)
 
-Storage (for now, local dev):
-  - Video chunks -> backend/uploads/{session_id}/chunk_{index}.webm
-  - Metadata     -> SQLite db (backend/data.db)
+This replaces the earlier SQLite + local-disk approach, which broke every
+time Render's free-tier service redeployed or spun down (ephemeral
+filesystem — Render's own docs confirm data is lost on redeploy, restart,
+AND spin-down after 15 min idle). Postgres + object storage survive all of that.
 
-Later (Phase 3+) this moves to S3-compatible storage + Postgres/PostGIS,
-but SQLite + local disk is enough to prove the upload flow works.
+Required environment variables (set these in Render's dashboard under
+Environment — never commit real values to the repo):
+  DATABASE_URL         - Postgres connection string (Supabase "Transaction
+                          pooler" URI, e.g. postgresql://user:pass@host:6543/postgres)
+  SUPABASE_URL          - e.g. https://xxxx.supabase.co
+  SUPABASE_SERVICE_KEY   - the "service_role" secret key (NOT the anon key)
 """
 
 import json
-import sqlite3
+import os
 import uuid
-from pathlib import Path
 from datetime import datetime, timezone
 
-import reverse_geocoder as rg
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from supabase import create_client
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 
-BASE_DIR = Path(__file__).parent
-UPLOAD_DIR = BASE_DIR / "uploads"
-DB_PATH = BASE_DIR / "data.db"
-
-UPLOAD_DIR.mkdir(exist_ok=True)
+DATABASE_URL = os.environ["DATABASE_URL"]
+SUPABASE_URL = os.environ["SUPABASE_URL"]
+SUPABASE_SERVICE_KEY = os.environ["SUPABASE_SERVICE_KEY"]
+VIDEO_BUCKET = "videos"
 
 app = FastAPI(title="way_to_destination backend")
 
-# Allow requests from the frontend (GitHub Pages, local dev, etc.)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -40,33 +43,34 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
 
 def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
 
 
 def init_db():
     conn = get_db()
-    conn.execute("""
+    cur = conn.cursor()
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS sessions (
             session_id TEXT PRIMARY KEY,
             created_at TEXT NOT NULL
         )
     """)
-    conn.execute("""
+    cur.execute("""
         CREATE TABLE IF NOT EXISTS chunks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            session_id TEXT NOT NULL,
+            id SERIAL PRIMARY KEY,
+            session_id TEXT NOT NULL REFERENCES sessions(session_id),
             chunk_index INTEGER NOT NULL,
-            video_path TEXT NOT NULL,
+            video_url TEXT NOT NULL,
             gps_points TEXT NOT NULL,
-            created_at TEXT NOT NULL,
-            FOREIGN KEY (session_id) REFERENCES sessions(session_id)
+            created_at TEXT NOT NULL
         )
     """)
     conn.commit()
+    cur.close()
     conn.close()
 
 
@@ -75,14 +79,15 @@ init_db()
 
 @app.post("/session/start")
 def start_session():
-    """Call this once when the user hits 'Start Recording'."""
     session_id = str(uuid.uuid4())
     conn = get_db()
-    conn.execute(
-        "INSERT INTO sessions (session_id, created_at) VALUES (?, ?)",
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT INTO sessions (session_id, created_at) VALUES (%s, %s)",
         (session_id, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()
+    cur.close()
     conn.close()
     return {"session_id": session_id}
 
@@ -91,43 +96,48 @@ def start_session():
 async def upload_chunk(
     session_id: str,
     chunk_index: int = Form(...),
-    gps_points: str = Form(...),  # JSON string: [{t, lat, lng, accuracy}, ...]
+    gps_points: str = Form(...),
     video: UploadFile = File(...),
 ):
-    """Upload one video chunk + the GPS points captured during it."""
     conn = get_db()
-    session = conn.execute(
-        "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-    ).fetchone()
-    if not session:
+    cur = conn.cursor()
+    cur.execute("SELECT 1 FROM sessions WHERE session_id = %s", (session_id,))
+    if not cur.fetchone():
+        cur.close()
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
 
     try:
         parsed_points = json.loads(gps_points)
     except json.JSONDecodeError:
+        cur.close()
         conn.close()
         raise HTTPException(status_code=400, detail="gps_points must be valid JSON")
 
-    session_dir = UPLOAD_DIR / session_id
-    session_dir.mkdir(exist_ok=True)
-    video_path = session_dir / f"chunk_{chunk_index}.webm"
-
     content = await video.read()
-    video_path.write_bytes(content)
+    storage_path = f"{session_id}/chunk_{chunk_index}.webm"
 
-    conn.execute(
-        """INSERT INTO chunks (session_id, chunk_index, video_path, gps_points, created_at)
-           VALUES (?, ?, ?, ?, ?)""",
+    # Upload to Supabase Storage (persists across redeploys/restarts)
+    supabase_client.storage.from_(VIDEO_BUCKET).upload(
+        storage_path,
+        content,
+        {"content-type": "video/webm", "upsert": "true"},
+    )
+    video_url = supabase_client.storage.from_(VIDEO_BUCKET).get_public_url(storage_path)
+
+    cur.execute(
+        """INSERT INTO chunks (session_id, chunk_index, video_url, gps_points, created_at)
+           VALUES (%s, %s, %s, %s, %s)""",
         (
             session_id,
             chunk_index,
-            str(video_path.relative_to(BASE_DIR)),
+            video_url,
             gps_points,
             datetime.now(timezone.utc).isoformat(),
         ),
     )
     conn.commit()
+    cur.close()
     conn.close()
 
     return {
@@ -136,25 +146,28 @@ async def upload_chunk(
         "chunk_index": chunk_index,
         "points_received": len(parsed_points),
         "video_size_bytes": len(content),
+        "video_url": video_url,
     }
 
 
 @app.get("/session/{session_id}")
 def get_session(session_id: str):
-    """Fetch all chunks + GPS trail for a session (used later to render on map)."""
     conn = get_db()
-    session = conn.execute(
-        "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-    ).fetchone()
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM sessions WHERE session_id = %s", (session_id,))
+    session = cur.fetchone()
     if not session:
+        cur.close()
         conn.close()
         raise HTTPException(status_code=404, detail="Session not found")
 
-    chunks = conn.execute(
-        "SELECT chunk_index, video_path, gps_points, created_at FROM chunks "
-        "WHERE session_id = ? ORDER BY chunk_index",
+    cur.execute(
+        "SELECT chunk_index, video_url, gps_points, created_at FROM chunks "
+        "WHERE session_id = %s ORDER BY chunk_index",
         (session_id,),
-    ).fetchall()
+    )
+    chunks = cur.fetchall()
+    cur.close()
     conn.close()
 
     return {
@@ -163,7 +176,7 @@ def get_session(session_id: str):
         "chunks": [
             {
                 "chunk_index": c["chunk_index"],
-                "video_path": c["video_path"],
+                "video_url": c["video_url"],
                 "gps_points": json.loads(c["gps_points"]),
                 "created_at": c["created_at"],
             }
@@ -174,52 +187,30 @@ def get_session(session_id: str):
 
 @app.get("/sessions")
 def list_sessions():
-    """List all recorded sessions (for the map view later)."""
     conn = get_db()
-    sessions = conn.execute(
-        "SELECT session_id, created_at FROM sessions ORDER BY created_at DESC"
-    ).fetchall()
+    cur = conn.cursor()
+    cur.execute("SELECT session_id, created_at FROM sessions ORDER BY created_at DESC")
+    sessions = cur.fetchall()
+    cur.close()
     conn.close()
     return [dict(s) for s in sessions]
 
 
-@app.get("/session/{session_id}/chunk/{chunk_index}/video")
-def get_chunk_video(session_id: str, chunk_index: int):
-    """Serve the actual video file for one chunk (used for click-to-seek playback)."""
-    conn = get_db()
-    chunk = conn.execute(
-        "SELECT video_path FROM chunks WHERE session_id = ? AND chunk_index = ?",
-        (session_id, chunk_index),
-    ).fetchone()
-    conn.close()
-
-    if not chunk:
-        raise HTTPException(status_code=404, detail="Chunk not found")
-
-    video_path = BASE_DIR / chunk["video_path"]
-    if not video_path.exists():
-        raise HTTPException(status_code=404, detail="Video file missing on disk")
-
-    return FileResponse(video_path, media_type="video/webm")
-
-
 @app.get("/geocode")
 def geocode_point(lat: float, lng: float):
-    """Reverse geocode a single coordinate to a place name using offline
-    GeoNames data (no external API call)."""
+    import reverse_geocoder as rg
     result = rg.search([(lat, lng)])[0]
     return {
         "name": result["name"],
-        "admin1": result["admin1"],  # state/province
-        "admin2": result["admin2"],  # district/county
+        "admin1": result["admin1"],
+        "admin2": result["admin2"],
         "country_code": result["cc"],
     }
 
 
 @app.post("/geocode/batch")
 def geocode_batch(points: list[dict]):
-    """Reverse geocode multiple coordinates at once (more efficient than
-    calling /geocode in a loop). Body: [{"lat": .., "lng": ..}, ...]"""
+    import reverse_geocoder as rg
     coords = [(p["lat"], p["lng"]) for p in points]
     if not coords:
         return []

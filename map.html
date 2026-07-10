@@ -186,7 +186,7 @@ async function loadSession(sessionId) {
     const allPoints = [];
     data.chunks.forEach(chunk => {
       chunk.gps_points.forEach(p => {
-        allPoints.push({ ...p, chunk_index: chunk.chunk_index, video_path: chunk.video_path });
+        allPoints.push({ ...p, chunk_index: chunk.chunk_index, video_url: chunk.video_url });
       });
     });
 
@@ -257,23 +257,26 @@ async function loadSession(sessionId) {
       );
 
       marker.on('click', async () => {
-        const videoUrl = `${BACKEND_URL}/session/${sessionId}/chunk/${p.chunk_index}/video`;
+        const videoUrl = p.video_url;
         const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] || p.t)) / 1000);
+
+        if (!videoUrl) {
+          videoInfoEl.textContent = '⚠ No video URL for this point.';
+          return;
+        }
 
         videoEl.style.display = 'block';
         videoEl.muted = true;
         videoInfoEl.textContent = `Checking video for chunk ${p.chunk_index}...`;
 
-        // Check the video actually exists before trying to play it — a
-        // clear error is much more useful than a silent "autoplay blocked".
         try {
           const check = await fetch(videoUrl, { method: 'GET', headers: { Range: 'bytes=0-1' } });
           if (!check.ok && check.status !== 206) {
-            videoInfoEl.textContent = `⚠ Video not found (HTTP ${check.status}). This session's data was likely cleared by a backend redeploy (Render's free disk resets on every deploy). Record a fresh session to test.`;
+            videoInfoEl.textContent = `⚠ Video not found (HTTP ${check.status}).`;
             return;
           }
         } catch (err) {
-          videoInfoEl.textContent = `⚠ Could not reach backend: ${err.message}`;
+          videoInfoEl.textContent = `⚠ Could not reach video storage: ${err.message}`;
           return;
         }
 
