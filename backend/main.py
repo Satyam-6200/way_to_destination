@@ -185,6 +185,42 @@ def get_session(session_id: str):
     }
 
 
+@app.get("/sessions/full")
+def list_sessions_full():
+    """Fetch all sessions with their full chunk + GPS data in one call —
+    used by the map to show every user's recorded path at once."""
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT session_id, created_at FROM sessions ORDER BY created_at DESC")
+    sessions = cur.fetchall()
+
+    result = []
+    for s in sessions:
+        cur.execute(
+            "SELECT chunk_index, video_url, gps_points, created_at FROM chunks "
+            "WHERE session_id = %s ORDER BY chunk_index",
+            (s["session_id"],),
+        )
+        chunks = cur.fetchall()
+        result.append({
+            "session_id": s["session_id"],
+            "created_at": s["created_at"],
+            "chunks": [
+                {
+                    "chunk_index": c["chunk_index"],
+                    "video_url": c["video_url"],
+                    "gps_points": json.loads(c["gps_points"]),
+                    "created_at": c["created_at"],
+                }
+                for c in chunks
+            ],
+        })
+
+    cur.close()
+    conn.close()
+    return result
+
+
 @app.get("/sessions")
 def list_sessions():
     conn = get_db()

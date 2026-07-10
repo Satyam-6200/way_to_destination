@@ -28,7 +28,11 @@ grows as more people record.
       Backend serves individual chunk videos (`GET /session/{id}/chunk/{n}/video`).
       Clicking a point on the map loads that point's chunk video and seeks
       to the right moment within it.
-- [ ] **Phase 5** — Multiple users/paths overlaid on one shared map
+- [x] **Phase 5** — Multi-user overlay (`map.html`)
+      Map now loads automatically on open — fetches ALL recorded sessions
+      via `GET /sessions/full` and draws every path at once, each in a
+      distinct color. No more manually pasting a session_id. A "Zoom" box
+      still lets you jump to one specific session if needed.
 
 ## Tech Stack
 
@@ -139,3 +143,7 @@ Endpoints:
   for video files. Render is now compute-only; all data survives restarts.
   Credentials are read from environment variables set in Render's
   dashboard, never committed to the repo.
+- 2026-07-10: Phase 5 complete — map now shows every recorded session
+  automatically on load (new `GET /sessions/full` backend endpoint), each
+  path drawn in a distinct color, no manual session_id pasting needed.
+  All 5 originally planned phases are now done.
