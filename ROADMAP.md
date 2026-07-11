@@ -49,8 +49,10 @@ already used in README.md.
 
 ## 3. Map & Discovery
 
-- [ ] 🟡 Village-level location names (current GeoNames dataset is too
+- [x] 🟡 Village-level location names (current GeoNames dataset is too
       sparse for rural areas — see README's "Planned" table)
+      *(Fixed — now using India Post's post-office directory, 150,000+
+      locations, MIT-licensed, bundled in backend/data/india_places.json.gz)*
 - [ ] 🟡 Marker clustering when zoomed out (many overlapping points will
       slow the map down as more paths get recorded)
 - [ ] 🟡 "Paths near me" using the visitor's own GPS location

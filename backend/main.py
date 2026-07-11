@@ -19,13 +19,18 @@ Environment — never commit real values to the repo):
 """
 
 import csv
+import gzip
 import json
 import os
+import re
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 
+import numpy as np
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from scipy.spatial import cKDTree
 from supabase import create_client
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -47,10 +52,12 @@ app.add_middleware(
 supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 
-def _load_place_index():
-    """Load the same GeoNames cities1000 dataset used for reverse geocoding,
-    but keep it as a plain list for fast case-insensitive text search
-    (place-name -> coordinates), i.e. forward search for the map's search box."""
+BASE_DIR = Path(__file__).parent
+
+
+def _load_geonames_index():
+    """GeoNames cities1000 (~200 India entries) — used as a fallback for
+    points outside India, where we don't have the granular dataset."""
     import reverse_geocoder as rg
     csv_path = os.path.join(os.path.dirname(rg.__file__), "rg_cities1000.csv")
     places = []
@@ -69,7 +76,69 @@ def _load_place_index():
     return places
 
 
-PLACE_INDEX = _load_place_index()
+def _load_india_index():
+    """India Post's post-office directory (MIT-licensed, bundled locally as
+    data/india_places.json.gz) — 150,000+ locations covering villages and
+    hamlets, not just big towns. This is what actually fixes the accuracy
+    problem GeoNames cities1000 had for rural India (e.g. returning
+    "Bariarpur, Munger" for a point that's really in Jhanjhra, Khagaria)."""
+    gz_path = BASE_DIR / "data" / "india_places.json.gz"
+    with gzip.open(gz_path, "rt", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    places = []
+    for row in raw:
+        lat, lng = row.get("a"), row.get("n")
+        if lat is None or lng is None:
+            continue
+        raw_name = row.get("o", "")
+        # Dataset has inconsistent suffixes: "X B.O", "X BO", "X S.O" etc
+        # (Branch/Sub/Head post office) — strip them for a cleaner display name
+        clean_name = re.sub(r"\s+[BSH]\.?O\.?$", "", raw_name).strip()
+        places.append({
+            "name": clean_name or raw_name,
+            "admin1": row.get("s", ""),   # state
+            "admin2": row.get("i", ""),   # district
+            "cc": "IN",
+            "lat": float(lat),
+            "lng": float(lng),
+            "_name_lower": clean_name.lower() or raw_name.lower(),
+        })
+    return places
+
+
+GEONAMES_INDEX = _load_geonames_index()
+INDIA_INDEX = _load_india_index()
+
+# KDTree for fast reverse geocoding (coords -> nearest place). Built once
+# at startup since these datasets don't change at runtime.
+_india_coords = np.array([[p["lat"], p["lng"]] for p in INDIA_INDEX])
+INDIA_TREE = cKDTree(_india_coords)
+
+_geonames_coords = np.array([[p["lat"], p["lng"]] for p in GEONAMES_INDEX])
+GEONAMES_TREE = cKDTree(_geonames_coords)
+
+# Rough India bounding box — used to decide which dataset to search first
+INDIA_BOUNDS = {"lat_min": 6.0, "lat_max": 37.5, "lng_min": 68.0, "lng_max": 97.5}
+
+
+def _in_india(lat, lng):
+    return (INDIA_BOUNDS["lat_min"] <= lat <= INDIA_BOUNDS["lat_max"] and
+            INDIA_BOUNDS["lng_min"] <= lng <= INDIA_BOUNDS["lng_max"])
+
+
+def reverse_geocode_one(lat, lng):
+    if _in_india(lat, lng):
+        dist, idx = INDIA_TREE.query([lat, lng])
+        return INDIA_INDEX[idx]
+    dist, idx = GEONAMES_TREE.query([lat, lng])
+    return GEONAMES_INDEX[idx]
+
+
+# Combined index for forward text search (place name -> coords) — India's
+# granular dataset first (more results, more useful), GeoNames after for
+# international place names.
+PLACE_INDEX = INDIA_INDEX + GEONAMES_INDEX
 
 
 def get_db():
@@ -260,10 +329,10 @@ def list_sessions():
 
 @app.get("/search")
 def search_places(q: str, limit: int = 10):
-    """Search for a place by name (used by the map's search box). Returns
-    coordinates so the frontend can pan/zoom the map there — this is
-    forward search (name -> coords), separate from /geocode which is
-    reverse (coords -> name). Both use the same offline GeoNames data."""
+    """Search for a place by name (used by the map's search box). Searches
+    the granular India post-office dataset (villages, not just big towns)
+    first, then GeoNames for places outside India. Returns coordinates so
+    the frontend can pan/zoom the map there."""
     query = q.strip().lower()
     if not query:
         return []
@@ -294,8 +363,7 @@ def search_places(q: str, limit: int = 10):
 
 @app.get("/geocode")
 def geocode_point(lat: float, lng: float):
-    import reverse_geocoder as rg
-    result = rg.search([(lat, lng)])[0]
+    result = reverse_geocode_one(lat, lng)
     return {
         "name": result["name"],
         "admin1": result["admin1"],
@@ -306,11 +374,9 @@ def geocode_point(lat: float, lng: float):
 
 @app.post("/geocode/batch")
 def geocode_batch(points: list[dict]):
-    import reverse_geocoder as rg
-    coords = [(p["lat"], p["lng"]) for p in points]
-    if not coords:
+    if not points:
         return []
-    results = rg.search(coords)
+    results = [reverse_geocode_one(p["lat"], p["lng"]) for p in points]
     return [
         {
             "name": r["name"],

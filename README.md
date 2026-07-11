@@ -49,7 +49,7 @@ work through it one item at a time rather than jumping around.**
 | Backend API | [FastAPI](https://fastapi.tiangolo.com/) (Python) | `backend/main.py` — session + chunk upload/retrieval endpoints |
 | Database | PostgreSQL ([Supabase](https://supabase.com)) | Sessions + chunk metadata (GPS points as JSON), persistent |
 | Video storage | Supabase Storage (S3-compatible) | Public bucket `videos/{session_id}/chunk_N.webm`, persistent |
-| Reverse geocoding | Self-hosted GeoNames (`reverse_geocoder` lib) | Offline place names, no external API calls |
+| Reverse geocoding | India Post directory (150K+ villages) + GeoNames fallback | Offline, no external API calls; village-level accuracy for India |
 | Video codec | WebM (VP8) via `MediaRecorder` | Captured at 640x480, ~600kbps |
 | Backend hosting | [Render](https://render.com) (free tier) | `way-to-destination.onrender.com` — code/compute only now; all data lives in Supabase, so redeploys/spin-downs no longer wipe anything |
 | Frontend hosting | GitHub Pages | Auto-deploys from `main` branch |
@@ -60,7 +60,7 @@ work through it one item at a time rather than jumping around.**
 |---|---|---|
 | Frontend framework | React | Once UI complexity grows past a few pages |
 | Database extension | PostGIS | Proper geospatial queries (nearby paths, coverage area) at scale |
-| User-entered location name | Optional text field at recording time | GeoNames cities1000 only has larger towns, so auto-detected names are often the nearest big town, not the actual village (e.g. showed "Bariarpur, Munger" for a point actually in Jhanjhra, Khagaria). Letting the recording user type the real local place name would be more accurate than reverse geocoding for rural areas. |
+| User-entered location name | Optional text field at recording time | Reverse geocoding is now much better (village-level India dataset) but still won't always match hyper-local names people actually use. Letting the recording user type the real local name would be the most accurate option. |
 
 ### Backend environment variables (Render → Settings → Environment)
 Required for the backend to start — set these in Render's dashboard, never
@@ -194,3 +194,13 @@ Endpoints:
   every 10 minutes so Render's free instance never goes idle long enough
   to spin down. This is a stopgap for the free tier, not a permanent fix
   (a paid Render instance is the real fix if it's ever needed).
+- 2026-07-11: Fixed the village-level location accuracy problem. Replaced
+  GeoNames cities1000 (only ~200 India entries — too sparse for rural
+  areas) with India Post's post-office directory (MIT-licensed npm
+  package `india-pincode`'s bundled dataset, 150,000+ locations covering
+  villages, not just big towns). Bundled locally as
+  backend/data/india_places.json.gz, looked up via a KDTree for fast
+  reverse geocoding. GeoNames is kept as a fallback for coordinates
+  outside India. Confirmed fix: a test point that used to return
+  "Bariarpur, Munger" (wrong — nearest known big town, ~15km off) now
+  correctly returns a location in Khagaria district.
