@@ -18,6 +18,7 @@ Environment — never commit real values to the repo):
   SUPABASE_SERVICE_KEY   - the "service_role" secret key (NOT the anon key)
 """
 
+import csv
 import json
 import os
 import uuid
@@ -44,6 +45,31 @@ app.add_middleware(
 )
 
 supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+
+
+def _load_place_index():
+    """Load the same GeoNames cities1000 dataset used for reverse geocoding,
+    but keep it as a plain list for fast case-insensitive text search
+    (place-name -> coordinates), i.e. forward search for the map's search box."""
+    import reverse_geocoder as rg
+    csv_path = os.path.join(os.path.dirname(rg.__file__), "rg_cities1000.csv")
+    places = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            places.append({
+                "name": row["name"],
+                "admin1": row["admin1"],
+                "admin2": row["admin2"],
+                "cc": row["cc"],
+                "lat": float(row["lat"]),
+                "lng": float(row["lon"]),
+                "_name_lower": row["name"].lower(),
+            })
+    return places
+
+
+PLACE_INDEX = _load_place_index()
 
 
 def get_db():
@@ -230,6 +256,40 @@ def list_sessions():
     cur.close()
     conn.close()
     return [dict(s) for s in sessions]
+
+
+@app.get("/search")
+def search_places(q: str, limit: int = 10):
+    """Search for a place by name (used by the map's search box). Returns
+    coordinates so the frontend can pan/zoom the map there — this is
+    forward search (name -> coords), separate from /geocode which is
+    reverse (coords -> name). Both use the same offline GeoNames data."""
+    query = q.strip().lower()
+    if not query:
+        return []
+
+    starts_with = []
+    contains = []
+    for place in PLACE_INDEX:
+        if place["_name_lower"].startswith(query):
+            starts_with.append(place)
+        elif query in place["_name_lower"]:
+            contains.append(place)
+        if len(starts_with) >= limit:
+            break
+
+    results = (starts_with + contains)[:limit]
+    return [
+        {
+            "name": p["name"],
+            "admin1": p["admin1"],
+            "admin2": p["admin2"],
+            "country_code": p["cc"],
+            "lat": p["lat"],
+            "lng": p["lng"],
+        }
+        for p in results
+    ]
 
 
 @app.get("/geocode")

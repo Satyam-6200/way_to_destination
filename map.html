@@ -22,25 +22,53 @@
     display: flex;
     gap: 8px;
   }
-  #sessionInput {
+  #searchWrap {
+    position: relative;
     flex: 1;
-    padding: 10px;
+  }
+  #searchInput {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 14px;
     border-radius: 6px;
     border: 1px solid #333;
     background: #1a2232;
     color: #eee;
-    font-size: 13px;
+    font-size: 14px;
   }
-  #focusBtn, #refreshBtn {
+  #searchResults {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: #16213a;
+    border: 1px solid #2a3650;
+    border-radius: 6px;
+    margin-top: 4px;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 1000;
+    display: none;
+  }
+  .search-result {
+    padding: 10px 14px;
+    cursor: pointer;
+    font-size: 13px;
+    border-bottom: 1px solid #232b3d;
+  }
+  .search-result:last-child { border-bottom: none; }
+  .search-result:hover, .search-result.active { background: #223052; }
+  .search-result .place-name { font-weight: 600; color: #eee; }
+  .search-result .place-sub { color: #9aa5b8; font-size: 11px; }
+  #refreshBtn {
     padding: 10px 14px;
     border-radius: 6px;
     border: none;
-    background: #2e7d32;
+    background: #3a4a63;
     color: white;
     font-size: 13px;
     cursor: pointer;
   }
-  #refreshBtn { background: #3a4a63; }
   #status {
     padding: 8px 16px;
     background: #1a2232;
@@ -77,8 +105,10 @@
 <div id="header">
   <h2>🗺️ way_to_destination — recorded paths (all users)</h2>
   <div id="controls">
-    <input id="sessionInput" type="text" placeholder="Paste a session_id to zoom to it (optional)" />
-    <button id="focusBtn">Zoom</button>
+    <div id="searchWrap">
+      <input id="searchInput" type="text" placeholder="Search for a place (village, town, district)..." autocomplete="off" />
+      <div id="searchResults"></div>
+    </div>
     <button id="refreshBtn">Refresh</button>
   </div>
 </div>
@@ -94,8 +124,8 @@
 const BACKEND_URL = "https://way-to-destination.onrender.com";
 
 const statusEl = document.getElementById('status');
-const sessionInput = document.getElementById('sessionInput');
-const focusBtn = document.getElementById('focusBtn');
+const searchInput = document.getElementById('searchInput');
+const searchResultsEl = document.getElementById('searchResults');
 const refreshBtn = document.getElementById('refreshBtn');
 const videoEl = document.getElementById('chunkVideo');
 const videoInfoEl = document.getElementById('videoInfo');
@@ -304,14 +334,65 @@ async function loadAllSessions() {
   setStatus(`Showing ${Object.keys(sessionLayers).length} recorded path(s), ${totalPoints} GPS points total, ${formatDistance(totalDistance)} combined distance. Tap any colored point to play its video.`);
 }
 
-focusBtn.addEventListener('click', () => {
-  const id = sessionInput.value.trim();
-  const layer = sessionLayers[id];
-  if (layer) {
-    map.fitBounds(layer.bounds, { padding: [40, 40] });
-  } else {
-    setStatus(`Session ${id} not found among loaded paths (check the ID, or Refresh if it was just recorded).`);
+// --- Place search box ---
+let searchDebounce = null;
+let searchMarker = null;
+
+async function runSearch(query) {
+  if (!query || query.length < 2) {
+    searchResultsEl.style.display = 'none';
+    return;
   }
+  try {
+    const res = await fetch(`${BACKEND_URL}/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const results = await res.json();
+    renderSearchResults(results);
+  } catch (err) {
+    searchResultsEl.innerHTML = `<div class="search-result">⚠ Search failed: ${err.message}</div>`;
+    searchResultsEl.style.display = 'block';
+  }
+}
+
+function renderSearchResults(results) {
+  if (results.length === 0) {
+    searchResultsEl.innerHTML = `<div class="search-result">No places found</div>`;
+    searchResultsEl.style.display = 'block';
+    return;
+  }
+  searchResultsEl.innerHTML = results.map((r, i) => `
+    <div class="search-result" data-idx="${i}">
+      <div class="place-name">${r.name}</div>
+      <div class="place-sub">${[r.admin2, r.admin1, r.country_code].filter(Boolean).join(', ')}</div>
+    </div>
+  `).join('');
+  searchResultsEl.style.display = 'block';
+
+  searchResultsEl.querySelectorAll('.search-result').forEach((el, i) => {
+    el.addEventListener('click', () => selectSearchResult(results[i]));
+  });
+}
+
+function selectSearchResult(place) {
+  searchResultsEl.style.display = 'none';
+  searchInput.value = `${place.name}, ${place.admin1}`;
+
+  if (searchMarker) map.removeLayer(searchMarker);
+  searchMarker = L.marker([place.lat, place.lng]).addTo(map)
+    .bindPopup(`<b>${place.name}</b><br>${[place.admin2, place.admin1, place.country_code].filter(Boolean).join(', ')}`)
+    .openPopup();
+
+  map.setView([place.lat, place.lng], 13);
+}
+
+searchInput.addEventListener('input', () => {
+  clearTimeout(searchDebounce);
+  const query = searchInput.value.trim();
+  searchDebounce = setTimeout(() => runSearch(query), 300);
+});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#searchWrap')) searchResultsEl.style.display = 'none';
 });
 
 refreshBtn.addEventListener('click', loadAllSessions);

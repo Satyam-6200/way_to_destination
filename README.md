@@ -147,3 +147,9 @@ Endpoints:
   automatically on load (new `GET /sessions/full` backend endpoint), each
   path drawn in a distinct color, no manual session_id pasting needed.
   All 5 originally planned phases are now done.
+- 2026-07-10: Replaced the dev-tool "paste a session_id" box with a real
+  place search bar (new `GET /search` backend endpoint — forward search,
+  name -> coordinates, using the same offline GeoNames dataset already
+  used for reverse geocoding). Typing a place name now shows matching
+  results with district/state, and selecting one pans/zooms the map there
+  — much closer to how an actual end user would explore the map.
