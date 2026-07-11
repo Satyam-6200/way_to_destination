@@ -15,12 +15,15 @@ already used in README.md.
 
 ## 1. Core Recording Experience
 
-- [ ] 🔴 **Network-drop resilience** — if a chunk upload fails (common in
+- [x] 🔴 **Network-drop resilience** — if a chunk upload fails (common in
       rural areas with patchy signal), queue it locally and retry
       automatically instead of losing it forever
 - [ ] 🔴 **Resume an interrupted recording** — if the browser tab closes,
       phone locks, or app crashes mid-walk, don't lose everything recorded
-      so far
+      so far. *(Partially covered by the network-resilience fix above —
+      chunks already recorded survive a reload and get uploaded
+      automatically. Still missing: resuming the live camera+GPS capture
+      itself after a crash, mid-walk.)*
 - [ ] 🟡 Pause/resume recording (not just start/stop)
 - [ ] 🟡 Live GPS accuracy indicator shown while recording (warn if signal
       is poor, e.g. "GPS weak — video may not line up well")

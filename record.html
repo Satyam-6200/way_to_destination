@@ -63,6 +63,16 @@
     font-size: 13.5px;
     line-height: 1.9;
   }
+  #pendingBadge {
+    margin-top: 8px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    background: rgba(184, 121, 42, 0.15);
+    border: 1px solid var(--gold-dim);
+    color: var(--gold-dim);
+    font-size: 12.5px;
+    font-weight: 600;
+  }
   video {
     width: 100%;
     border-radius: var(--radius);
@@ -156,6 +166,7 @@
   </div>
 
   <div id="status">Status: idle</div>
+  <div id="pendingBadge" style="display:none"></div>
   <div id="sessionInfo">No session yet</div>
   <div id="log"></div>
 </div>
@@ -180,6 +191,7 @@ const stopBtn = document.getElementById('stopBtn');
 const statusEl = document.getElementById('status');
 const sessionInfoEl = document.getElementById('sessionInfo');
 const logEl = document.getElementById('log');
+const pendingBadge = document.getElementById('pendingBadge');
 
 function setStatus(msg) {
   statusEl.textContent = "Status: " + msg;
@@ -191,6 +203,93 @@ function logLine(text, cls) {
   div.textContent = text;
   logEl.prepend(div);
 }
+
+// --- Offline-safe upload queue (IndexedDB) ---
+// A chunk is saved here the instant it's recorded, BEFORE we try to upload
+// it. If the upload fails (no signal — common in rural areas), it stays
+// queued and we keep retrying — including after a page reload, so a
+// dropped connection or a closed tab never loses a recorded chunk.
+const DB_NAME = 'safar-recorder';
+const STORE_NAME = 'pending_chunks';
+
+function openQueueDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function queueChunk(record) {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const req = tx.objectStore(STORE_NAME).add(record);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function getAllQueued() {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readonly');
+    const req = tx.objectStore(STORE_NAME).getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function deleteQueued(id) {
+  const db = await openQueueDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, 'readwrite');
+    const req = tx.objectStore(STORE_NAME).delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function updatePendingBadge() {
+  const items = await getAllQueued();
+  if (items.length === 0) {
+    pendingBadge.style.display = 'none';
+  } else {
+    pendingBadge.style.display = 'inline-block';
+    pendingBadge.textContent = `${items.length} chunk(s) waiting to upload`;
+  }
+  return items.length;
+}
+
+let flushing = false;
+async function flushQueue() {
+  if (flushing) return;
+  flushing = true;
+  try {
+    const items = await getAllQueued();
+    for (const item of items) {
+      try {
+        const result = await uploadChunkRaw(item.session_id, item.blob, item.chunk_index, item.gps_points);
+        await deleteQueued(item.id);
+        logLine(`✓ chunk ${item.chunk_index} uploaded (from queue) — ${result.points_received} GPS points`, 'chunk-ok');
+      } catch (err) {
+        // still failing — leave it queued, will retry again later
+        break; // stop this pass, no point hammering a dead connection
+      }
+    }
+  } finally {
+    flushing = false;
+    updatePendingBadge();
+  }
+}
+
+// Retry the queue whenever the browser thinks we're back online, and also
+// on a regular timer (connectivity events aren't always reliable on mobile)
+window.addEventListener('online', flushQueue);
+setInterval(flushQueue, 15000);
 
 async function init() {
   try {
@@ -207,6 +306,8 @@ async function init() {
   } catch (err) {
     setStatus("camera error: " + err.message);
   }
+  await updatePendingBadge();
+  flushQueue(); // in case there's leftover work from a previous crashed/closed session
 }
 
 async function startSession() {
@@ -216,13 +317,13 @@ async function startSession() {
   return data.session_id;
 }
 
-async function uploadChunk(blob, index, points) {
+async function uploadChunkRaw(forSessionId, blob, index, points) {
   const form = new FormData();
   form.append('chunk_index', index);
   form.append('gps_points', JSON.stringify(points));
   form.append('video', blob, `chunk_${index}.webm`);
 
-  const res = await fetch(`${BACKEND_URL}/session/${sessionId}/chunk`, {
+  const res = await fetch(`${BACKEND_URL}/session/${forSessionId}/chunk`, {
     method: 'POST',
     body: form
   });
@@ -245,6 +346,7 @@ function recordOneChunk() {
   const pointsForThisChunk = gpsBuffer;
   gpsBuffer = []; // reset buffer for next chunk
   const thisIndex = chunkIndex++;
+  const forSessionId = sessionId;
 
   recorder.ondataavailable = (e) => {
     if (e.data.size > 0) parts.push(e.data);
@@ -252,15 +354,41 @@ function recordOneChunk() {
 
   recorder.onstop = async () => {
     const blob = new Blob(parts, { type: 'video/webm' });
+
+    // Save locally FIRST — this is what makes the chunk safe even if the
+    // upload below fails or the app closes right after.
+    let queuedId = null;
     try {
-      const result = await uploadChunk(blob, thisIndex, pointsForThisChunk);
+      queuedId = await queueChunk({
+        session_id: forSessionId,
+        chunk_index: thisIndex,
+        gps_points: pointsForThisChunk,
+        blob,
+        queued_at: Date.now()
+      });
+      await updatePendingBadge();
+    } catch (err) {
+      // IndexedDB unavailable/full — fall back to a direct upload attempt
+      // below without the safety net, rather than crashing the recording loop
+      logLine(`⚠ could not queue chunk ${thisIndex} locally (${err.message}) — trying direct upload`, 'chunk-fail');
+    }
+
+    try {
+      const result = await uploadChunkRaw(forSessionId, blob, thisIndex, pointsForThisChunk);
+      if (queuedId !== null) await deleteQueued(queuedId);
       chunksUploaded++;
       totalPointsSent += result.points_received;
       logLine(`✓ chunk ${thisIndex} uploaded — ${result.points_received} GPS points, ${(result.video_size_bytes/1024).toFixed(1)} KB`, 'chunk-ok');
       setStatus(`recording... ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent`);
     } catch (err) {
-      logLine(`✗ chunk ${thisIndex} FAILED: ${err.message}`, 'chunk-fail');
+      if (queuedId !== null) {
+        logLine(`⏳ chunk ${thisIndex} queued — will retry (${err.message})`, 'chunk-fail');
+        setStatus(`recording... upload having trouble, chunks are saved locally and will retry`);
+      } else {
+        logLine(`✗ chunk ${thisIndex} FAILED and could not be queued: ${err.message}`, 'chunk-fail');
+      }
     }
+    await updatePendingBadge();
 
     // Start the next chunk's recording right away (small gap is fine)
     if (isRecording) {
@@ -336,6 +464,7 @@ stopBtn.addEventListener('click', () => {
   startBtn.disabled = false;
   setTimeout(() => {
     setStatus(`stopped. Total: ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent. Session: ${sessionId}`);
+    flushQueue();
   }, 1500); // small delay to let the last chunk's upload finish/log
 });
 

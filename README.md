@@ -181,3 +181,11 @@ Endpoints:
   on purpose (paths glow against it, separate treatment from the page
   chrome around it). Also filled out the Record page, which felt bare —
   added an intro line and a short "before you start" tips card.
+- 2026-07-11: Added the full ROADMAP.md with every planned feature,
+  prioritized. Started working through it top-down.
+- 2026-07-11: Network-drop resilience (first 🔴 item) — chunks are now
+  saved to IndexedDB the instant they're recorded, before attempting
+  upload. Failed uploads stay queued and retry automatically (on an
+  interval, and on the browser's 'online' event), including across page
+  reloads — so a dropped connection or a closed tab no longer loses a
+  recorded chunk. A small badge shows how many chunks are waiting.
