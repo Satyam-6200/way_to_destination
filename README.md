@@ -172,3 +172,9 @@ Endpoints:
   the logo, since Record/Explore are already the two big cards on that
   page — having them in the nav too was redundant. Record and Map pages
   keep the full nav so there's still a way back/around.
+- 2026-07-11: Switched the whole design system from dark to a warm, muddy
+  cream palette (not stark cream — deepened gold/terracotta/green for
+  contrast against a dustier off-white). The map canvas itself stays dark
+  on purpose (paths glow against it, separate treatment from the page
+  chrome around it). Also filled out the Record page, which felt bare —
+  added an intro line and a short "before you start" tips card.

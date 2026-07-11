@@ -13,15 +13,15 @@
   body {
     font-family: 'Mukta', sans-serif;
     margin: 0;
-    background: #0b0f1a;
-    color: #eee;
+    background: var(--bg);
+    color: var(--ink);
   }
   #header {
     padding: 12px 16px;
-    background: #111827;
-    border-bottom: 1px solid #232b3d;
+    background: var(--bg-alt);
+    border-bottom: 1px solid var(--border);
   }
-  #header h2 { margin: 0 0 8px 0; font-size: 16px; font-family: 'Mukta', sans-serif; font-weight: 700; }
+  #header h2 { margin: 0 0 8px 0; font-size: 16px; font-family: 'Mukta', sans-serif; font-weight: 700; color: var(--ink); }
   #controls {
     display: flex;
     gap: 8px;
@@ -35,9 +35,9 @@
     box-sizing: border-box;
     padding: 10px 14px;
     border-radius: 6px;
-    border: 1px solid #333;
-    background: #1a2232;
-    color: #eee;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink);
     font-size: 14px;
   }
   #searchResults {
@@ -45,8 +45,8 @@
     top: 100%;
     left: 0;
     right: 0;
-    background: #16213a;
-    border: 1px solid #2a3650;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
     border-radius: 6px;
     margin-top: 4px;
     max-height: 260px;
@@ -58,27 +58,31 @@
     padding: 10px 14px;
     cursor: pointer;
     font-size: 13px;
-    border-bottom: 1px solid #232b3d;
+    border-bottom: 1px solid var(--border);
   }
   .search-result:last-child { border-bottom: none; }
-  .search-result:hover, .search-result.active { background: #223052; }
-  .search-result .place-name { font-weight: 600; color: #eee; }
-  .search-result .place-sub { color: #9aa5b8; font-size: 11px; }
+  .search-result:hover, .search-result.active { background: var(--bg-alt); }
+  .search-result .place-name { font-weight: 600; color: var(--ink); }
+  .search-result .place-sub { color: var(--ink-muted); font-size: 11px; }
   #refreshBtn {
     padding: 10px 14px;
     border-radius: 6px;
     border: none;
-    background: #3a4a63;
-    color: white;
+    background: var(--gold);
+    color: var(--on-accent);
     font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
   }
   #status {
     padding: 8px 16px;
-    background: #1a2232;
+    background: var(--bg-card);
     font-size: 12px;
-    color: #9aa5b8;
+    color: var(--ink-muted);
   }
+  /* The map canvas itself stays dark on purpose — recorded paths glow
+     against it like trails revealed at night, independent of the page's
+     light chrome around it. */
   #map {
     height: calc(100vh - 320px);
     width: 100%;
@@ -87,8 +91,8 @@
   .leaflet-container { background: #0b0f1a; }
   #videoPanel {
     padding: 10px 16px;
-    background: #0d1420;
-    border-bottom: 1px solid #232b3d;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
   }
   #chunkVideo {
     width: 100%;
@@ -99,7 +103,7 @@
   }
   #videoInfo {
     font-size: 12px;
-    color: #9aa5b8;
+    color: var(--ink-muted);
     margin-top: 6px;
   }
 </style>
@@ -109,9 +113,9 @@
 <nav class="site-nav">
   <a href="index.html" class="wordmark" style="text-decoration:none">
     <svg width="30" height="18" viewBox="0 0 30 18" style="flex-shrink:0">
-      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#d9a441" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
-      <circle cx="2" cy="15" r="2.2" fill="#7a9b76" />
-      <circle cx="28" cy="3" r="2.2" fill="#d9a441" />
+      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#b8792a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
+      <circle cx="2" cy="15" r="2.2" fill="#4e6b49" />
+      <circle cx="28" cy="3" r="2.2" fill="#b8792a" />
     </svg>
     सफर
   </a>

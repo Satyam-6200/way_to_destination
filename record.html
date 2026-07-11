@@ -23,6 +23,46 @@
     letter-spacing: 0.06em;
     margin-bottom: 14px;
   }
+  .record-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  .record-head h1 {
+    font-size: 22px;
+    font-family: 'Mukta', sans-serif;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .record-intro {
+    color: var(--ink-muted);
+    font-size: 14px;
+    line-height: 1.5;
+    margin: 0 0 18px;
+  }
+  .tips-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin-bottom: 18px;
+  }
+  .tips-title {
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gold-dim);
+    margin-bottom: 8px;
+  }
+  .tips-card ul {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--ink-muted);
+    font-size: 13.5px;
+    line-height: 1.9;
+  }
   video {
     width: 100%;
     border-radius: var(--radius);
@@ -75,9 +115,9 @@
 <nav class="site-nav">
   <a href="index.html" class="wordmark" style="text-decoration:none">
     <svg width="30" height="18" viewBox="0 0 30 18" style="flex-shrink:0">
-      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#d9a441" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
-      <circle cx="2" cy="15" r="2.2" fill="#7a9b76" />
-      <circle cx="28" cy="3" r="2.2" fill="#d9a441" />
+      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#b8792a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
+      <circle cx="2" cy="15" r="2.2" fill="#4e6b49" />
+      <circle cx="28" cy="3" r="2.2" fill="#b8792a" />
     </svg>
     सफर
   </a>
@@ -89,17 +129,35 @@
 </nav>
 
 <div class="page">
-<h2>🎥 Record a route</h2>
-<video id="preview" autoplay muted playsinline></video>
+  <div class="record-head">
+    <svg width="26" height="16" viewBox="0 0 30 18" style="flex-shrink:0">
+      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#b8792a" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
+      <circle cx="2" cy="15" r="2.2" fill="#4e6b49" />
+      <circle cx="28" cy="3" r="2.2" fill="#b8792a" />
+    </svg>
+    <h1>Record a Route</h1>
+  </div>
+  <p class="record-intro">Walk your usual path — a field, a lane, a shortcut — and the camera and your location record together automatically.</p>
 
-<div class="btn-row">
-  <button id="startBtn" class="btn">Start Recording</button>
-  <button id="stopBtn" class="btn" disabled>Stop Recording</button>
-</div>
+  <div class="tips-card">
+    <div class="tips-title">Before you start</div>
+    <ul>
+      <li>Hold the phone steady, camera facing forward</li>
+      <li>Walk at a normal pace for the clearest video</li>
+      <li>Make sure Location is turned on</li>
+    </ul>
+  </div>
 
-<div id="status">Status: idle</div>
-<div id="sessionInfo">No session yet</div>
-<div id="log"></div>
+  <video id="preview" autoplay muted playsinline></video>
+
+  <div class="btn-row">
+    <button id="startBtn" class="btn">Start Recording</button>
+    <button id="stopBtn" class="btn" disabled>Stop Recording</button>
+  </div>
+
+  <div id="status">Status: idle</div>
+  <div id="sessionInfo">No session yet</div>
+  <div id="log"></div>
 </div>
 
 <script>

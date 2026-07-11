@@ -4,17 +4,18 @@
    Type: Yatra One (display, journey-themed) + Mukta (body, Devanagari-ready) + JetBrains Mono (data). */
 
 :root {
-  --bg: #12151f;
-  --bg-alt: #191d29;
-  --bg-card: #1d2230;
-  --border: #2a3040;
-  --ink: #f1ead9;
-  --ink-muted: #9a9587;
-  --gold: #d9a441;
-  --gold-dim: #a67f34;
-  --terracotta: #c1652f;
-  --trail-green: #7a9b76;
-  --deep: #0a0c12;
+  --bg: #ece1c8;
+  --bg-alt: #e3d5b2;
+  --bg-card: #f4ebd9;
+  --border: #d0bc8e;
+  --ink: #2b2116;
+  --ink-muted: #6e5f45;
+  --gold: #b8792a;
+  --gold-dim: #96631f;
+  --terracotta: #a84b22;
+  --trail-green: #4e6b49;
+  --on-accent: #fbf6ea;
+  --deep: #2b2116;
   --radius: 10px;
 }
 
@@ -105,8 +106,8 @@ a:hover { text-decoration: underline; }
 }
 .btn:hover { filter: brightness(1.1); text-decoration: none; }
 .btn:active { transform: scale(0.98); }
-.btn-primary { background: var(--gold); color: var(--deep); }
-.btn-secondary { background: var(--trail-green); color: var(--deep); }
+.btn-primary { background: var(--gold); color: var(--on-accent); }
+.btn-secondary { background: var(--trail-green); color: var(--on-accent); }
 .btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--border); }
 .btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
