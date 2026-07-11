@@ -1,0 +1,26 @@
+name: Keep backend warm
+
+# Render's free tier spins the backend down after 15 minutes of no
+# incoming traffic, causing a ~30s "cold start" delay on the next real
+# request — a bad first impression for anyone actually using the app.
+# This workflow pings the health endpoint every 10 minutes so the free
+# instance never goes fully idle.
+#
+# This is a stopgap for the free tier, not a real fix — if/when the
+# project can afford a paid Render instance, this workflow can be removed
+# since paid instances don't spin down. See ROADMAP.md.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}  # allows manually triggering a run from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          curl -sf -m 25 https://way-to-destination.onrender.com/health \
+            && echo "backend is awake" \
+            || echo "ping failed (backend may have been mid-restart) — will retry next run"

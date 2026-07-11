@@ -79,9 +79,12 @@ already used in README.md.
 
 ## 6. Backend & Infrastructure
 
-- [ ] 🔴 **Fix backend cold-start** — Render free tier sleeps after 15 min
+- [x] 🔴 **Fix backend cold-start** — Render free tier sleeps after 15 min
       idle, causing ~30s delay on the first request. Options: a scheduled
       keep-alive ping, or move to a host without this limitation
+      *(stopgap: GitHub Actions pings /health every 10 min — see
+      .github/workflows/keep-alive.yml. Real fix if this ever matters for
+      production is a paid Render instance, which doesn't spin down at all)*
 - [ ] 🟡 Rate limiting / abuse prevention on upload endpoints
 - [ ] 🟡 Backup strategy for the Supabase database
 - [ ] 🟢 Basic monitoring/alerting (know when the backend is down)

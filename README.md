@@ -189,3 +189,8 @@ Endpoints:
   interval, and on the browser's 'online' event), including across page
   reloads — so a dropped connection or a closed tab no longer loses a
   recorded chunk. A small badge shows how many chunks are waiting.
+- 2026-07-11: Backend cold-start fix (second 🔴 item) — added a GitHub
+  Actions workflow (.github/workflows/keep-alive.yml) that pings /health
+  every 10 minutes so Render's free instance never goes idle long enough
+  to spin down. This is a stopgap for the free tier, not a permanent fix
+  (a paid Render instance is the real fix if it's ever needed).
