@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>way_to_destination — raaste jo kabhi map pe nahi the</title>
+<title>सफर — paths that were never on a map</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Yatra+One&family=Mukta:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -170,11 +170,13 @@
 <body>
 
 <nav class="site-nav">
-  <div class="wordmark">way_to<span class="dot">_</span>destination</div>
-  <div class="links">
-    <a href="index.html" class="active">Home</a>
-    <a href="record.html">Record</a>
-    <a href="map.html">Map</a>
+  <div class="wordmark">
+    <svg width="30" height="18" viewBox="0 0 30 18" style="flex-shrink:0">
+      <path d="M2 15 Q 9 2, 15 9 T 28 3" stroke="#d9a441" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-dasharray="0.5 4.5"/>
+      <circle cx="2" cy="15" r="2.2" fill="#7a9b76" />
+      <circle cx="28" cy="3" r="2.2" fill="#d9a441" />
+    </svg>
+    सफर
   </div>
 </nav>
 
@@ -189,21 +191,21 @@
     <circle cx="660" cy="90" r="4" fill="#7a9b76" />
   </svg>
   <div class="eyebrow">a walked, not surveyed, map</div>
-  <h1>Raaste jo kabhi <span class="gold">map pe nahi the.</span></h1>
-  <p>Har koi jo apne gaon, khet ya galli me chalta hai — wahi is map ka pehla surveyor hai. Camera on karo, chalo, aur wo raasta hamesha ke liye map par aa jayega.</p>
+  <h1>Paths that were <span class="gold">never on a map.</span></h1>
+  <p>Anyone walking their own village road, field path, or lane is this map's first surveyor. Turn on your camera, walk, and that path stays on the map for good.</p>
 </div>
 
 <div class="waypoints">
   <a href="record.html" class="waypoint-card record">
     <div class="pin">🎥</div>
     <h3>Record a Route</h3>
-    <p>Apna camera on karo aur chalna shuru karo — GPS trail apne aap video ke saath record hoga.</p>
+    <p>Turn on your camera and start walking — your GPS trail records automatically alongside the video.</p>
     <div class="go">Start recording →</div>
   </a>
   <a href="map.html" class="waypoint-card explore">
     <div class="pin">🗺️</div>
     <h3>Explore the Map</h3>
-    <p>Ab tak jitne raaste record hue hain, sab ek map par dekho — kisi bhi point pe video dekho.</p>
+    <p>See every path recorded so far on one map — play the video at any point along the way.</p>
     <div class="go">Open the map →</div>
   </a>
 </div>
@@ -278,7 +280,7 @@ async function loadDashboard() {
     const recentListEl = document.getElementById('recentList');
 
     if (summaries.length === 0) {
-      recentListEl.innerHTML = '<div class="recent-empty">Koi recording nahi hai abhi — pehla raasta record karne wale tum ho sakte ho.</div>';
+      recentListEl.innerHTML = '<div class="recent-empty">No recordings yet — you could be the first to walk a path onto this map.</div>';
       return;
     }
 

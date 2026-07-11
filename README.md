@@ -164,3 +164,11 @@ Endpoints:
   paths) rather than generic dashboard/startup look — Yatra One (display)
   + Mukta (body, Devanagari-ready) + JetBrains Mono (data), warm
   indigo/gold/terracotta palette, a hand-drawn trail motif in the hero.
+- 2026-07-11: Renamed the app to सफर (Hindi for "journey") — wordmark
+  paired with a small winding-road icon in the nav, matching the hero's
+  trail motif at a smaller scale. Converted all Hinglish UI copy to plain
+  English (the product itself should read in English; Hinglish is just
+  how we talk about it in chat). Simplified the home page's nav to just
+  the logo, since Record/Explore are already the two big cards on that
+  page — having them in the nav too was redundant. Record and Map pages
+  keep the full nav so there's still a way back/around.
