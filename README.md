@@ -1,8 +1,11 @@
-# Crowdsourced Street View Platform
+# सफर (way_to_destination) — Full Roadmap
 
 Users record video while walking, GPS trail auto-syncs with the video, and it
 gets plotted on a map — building an organic, crowdsourced "street view" that
 grows as more people record.
+
+**See [ROADMAP.md](./ROADMAP.md) for the full prioritized feature list —
+work through it one item at a time rather than jumping around.**
 
 ## Concept
 - No dependency on Google Street View or any proprietary map/imagery product.
