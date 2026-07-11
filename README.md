@@ -12,7 +12,7 @@ grows as more people record.
 
 ## Phases
 
-- [x] **Phase 1** — Camera + GPS capture demo (`index.html`)
+- [x] **Phase 1** — Camera + GPS capture demo (now `record.html`)
       Tests that video recording and GPS trail logging stay in sync.
       Tested successfully on real device — 5-6m GPS accuracy, clean sync.
 - [x] **Phase 2** — Chunked upload backend (`backend/main.py`)
@@ -39,7 +39,8 @@ grows as more people record.
 **Currently in use:**
 | Layer | Tech | Notes |
 |---|---|---|
-| Recording UI | Vanilla HTML/JS | `index.html` — camera + GPS capture, chunked upload |
+| Recording UI | Vanilla HTML/JS | `record.html` — camera + GPS capture, chunked upload |
+| Dashboard/home | Vanilla HTML/JS | `index.html` — live stats, recent recordings, entry point |
 | Map viewer | Vanilla HTML/JS + [Leaflet](https://leafletjs.com/) | `map.html` — Leaflet used only as a rendering engine, no Google/Mapbox tiles |
 | Base map reference | Self-hosted GeoJSON | `data/world.geo.json` — public-domain coastline outline (not a live tile service) |
 | Backend API | [FastAPI](https://fastapi.tiangolo.com/) (Python) | `backend/main.py` — session + chunk upload/retrieval endpoints |
@@ -153,3 +154,13 @@ Endpoints:
   used for reverse geocoding). Typing a place name now shows matching
   results with district/state, and selecting one pans/zooms the map there
   — much closer to how an actual end user would explore the map.
+- 2026-07-11: Full app redesign — this was still a set of disconnected
+  test pages, not a real product. Restructured into: `index.html` (new
+  dashboard/home — hero, live stats, recent recordings), `record.html`
+  (the old index.html, recording logic unchanged, restyled), `map.html`
+  (restyled, functionality unchanged). Added `styles.css` as a shared
+  design system + consistent nav bar across all three pages. Design
+  direction: grounded in the actual subject (documenting unmapped rural
+  paths) rather than generic dashboard/startup look — Yatra One (display)
+  + Mukta (body, Devanagari-ready) + JetBrains Mono (data), warm
+  indigo/gold/terracotta palette, a hand-drawn trail motif in the hero.

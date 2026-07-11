@@ -4,10 +4,14 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>way_to_destination — Map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Yatra+One&family=Mukta:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
   body {
-    font-family: -apple-system, sans-serif;
+    font-family: 'Mukta', sans-serif;
     margin: 0;
     background: #0b0f1a;
     color: #eee;
@@ -17,7 +21,7 @@
     background: #111827;
     border-bottom: 1px solid #232b3d;
   }
-  #header h2 { margin: 0 0 8px 0; font-size: 16px; }
+  #header h2 { margin: 0 0 8px 0; font-size: 16px; font-family: 'Mukta', sans-serif; font-weight: 700; }
   #controls {
     display: flex;
     gap: 8px;
@@ -76,7 +80,7 @@
     color: #9aa5b8;
   }
   #map {
-    height: calc(100vh - 260px);
+    height: calc(100vh - 320px);
     width: 100%;
     background: #0b0f1a;
   }
@@ -101,6 +105,16 @@
 </style>
 </head>
 <body>
+
+<nav class="site-nav">
+  <div class="wordmark">way_to<span class="dot">_</span>destination</div>
+  <div class="links">
+    <a href="index.html">Home</a>
+    <a href="record.html">Record</a>
+    <a href="map.html" class="active">Map</a>
+  </div>
+</nav>
+
 
 <div id="header">
   <h2>🗺️ way_to_destination — recorded paths (all users)</h2>

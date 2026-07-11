@@ -1,0 +1,124 @@
+/* way_to_destination — shared design system
+   Subject: crowdsourced documentation of unmapped rural paths/roads.
+   Palette: warm dusk-indigo + turmeric gold + soil terracotta + trail green.
+   Type: Yatra One (display, journey-themed) + Mukta (body, Devanagari-ready) + JetBrains Mono (data). */
+
+:root {
+  --bg: #12151f;
+  --bg-alt: #191d29;
+  --bg-card: #1d2230;
+  --border: #2a3040;
+  --ink: #f1ead9;
+  --ink-muted: #9a9587;
+  --gold: #d9a441;
+  --gold-dim: #a67f34;
+  --terracotta: #c1652f;
+  --trail-green: #7a9b76;
+  --deep: #0a0c12;
+  --radius: 10px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: 'Mukta', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, .display {
+  font-family: 'Yatra One', cursive;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  margin: 0;
+}
+
+.mono, .stat-value, code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+a { color: var(--gold); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+/* --- Navigation --- */
+.site-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--bg-alt);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+.site-nav .wordmark {
+  font-family: 'Yatra One', cursive;
+  font-size: 20px;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.site-nav .wordmark .dot { color: var(--gold); }
+.site-nav .links {
+  display: flex;
+  gap: 4px;
+}
+.site-nav .links a {
+  color: var(--ink-muted);
+  font-family: 'Mukta', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+}
+.site-nav .links a:hover {
+  background: var(--bg-card);
+  color: var(--ink);
+}
+.site-nav .links a.active {
+  color: var(--gold);
+  background: rgba(217, 164, 65, 0.1);
+}
+
+/* --- Buttons --- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 22px;
+  border-radius: 8px;
+  border: none;
+  font-family: 'Mukta', sans-serif;
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+  transition: transform 0.12s, filter 0.12s;
+  text-decoration: none;
+}
+.btn:hover { filter: brightness(1.1); text-decoration: none; }
+.btn:active { transform: scale(0.98); }
+.btn-primary { background: var(--gold); color: var(--deep); }
+.btn-secondary { background: var(--trail-green); color: var(--deep); }
+.btn-outline { background: transparent; color: var(--ink); border: 1px solid var(--border); }
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* --- Cards --- */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+
+/* --- Utility --- */
+.muted { color: var(--ink-muted); }
+.accent-gold { color: var(--gold); }
+.accent-trail { color: var(--trail-green); }

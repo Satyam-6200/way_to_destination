@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Record a Route — way_to_destination</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Yatra+One&family=Mukta:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<style>
+  .page {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+  .page h2 {
+    font-size: 15px;
+    font-family: 'Mukta', sans-serif;
+    font-weight: 700;
+    color: var(--ink-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 14px;
+  }
+  video {
+    width: 100%;
+    border-radius: var(--radius);
+    background: #000;
+    border: 1px solid var(--border);
+  }
+  .btn-row { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+  .btn-row .btn { width: 100%; padding: 15px; font-size: 16px; }
+  #startBtn { background: var(--gold); color: var(--deep); }
+  #stopBtn { background: var(--terracotta); color: var(--deep); }
+  #status {
+    margin-top: 12px;
+    padding: 12px 14px;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--ink-muted);
+  }
+  #sessionInfo {
+    margin-top: 8px;
+    padding: 10px 14px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+    color: var(--ink-muted);
+  }
+  #log {
+    margin-top: 12px;
+    max-height: 250px;
+    overflow-y: auto;
+    background: var(--bg-alt);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-family: 'JetBrains Mono', monospace;
+  }
+  .point { padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .point:last-child { border-bottom: none; }
+  .chunk-ok { color: var(--trail-green); }
+  .chunk-fail { color: var(--terracotta); }
+</style>
+</head>
+<body>
+
+<nav class="site-nav">
+  <div class="wordmark">way_to<span class="dot">_</span>destination</div>
+  <div class="links">
+    <a href="index.html">Home</a>
+    <a href="record.html" class="active">Record</a>
+    <a href="map.html">Map</a>
+  </div>
+</nav>
+
+<div class="page">
+<h2>🎥 Record a route</h2>
+<video id="preview" autoplay muted playsinline></video>
+
+<div class="btn-row">
+  <button id="startBtn" class="btn">Start Recording</button>
+  <button id="stopBtn" class="btn" disabled>Stop Recording</button>
+</div>
+
+<div id="status">Status: idle</div>
+<div id="sessionInfo">No session yet</div>
+<div id="log"></div>
+</div>
+
+<script>
+// Backend URL — change this if you redeploy elsewhere
+const BACKEND_URL = "https://way-to-destination.onrender.com";
+
+let mediaRecorder;
+let gpsBuffer = [];   // points since the last chunk was cut
+let watchId = null;
+let recordStartTime = null;
+let stream = null;
+let sessionId = null;
+let chunkIndex = 0;
+let chunksUploaded = 0;
+let totalPointsSent = 0;
+
+const preview = document.getElementById('preview');
+const startBtn = document.getElementById('startBtn');
+const stopBtn = document.getElementById('stopBtn');
+const statusEl = document.getElementById('status');
+const sessionInfoEl = document.getElementById('sessionInfo');
+const logEl = document.getElementById('log');
+
+function setStatus(msg) {
+  statusEl.textContent = "Status: " + msg;
+}
+
+function logLine(text, cls) {
+  const div = document.createElement('div');
+  div.className = 'point' + (cls ? ' ' + cls : '');
+  div.textContent = text;
+  logEl.prepend(div);
+}
+
+async function init() {
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: 'environment',
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      },
+      audio: false
+    });
+    preview.srcObject = stream;
+    setStatus("camera ready, waiting to start");
+  } catch (err) {
+    setStatus("camera error: " + err.message);
+  }
+}
+
+async function startSession() {
+  const res = await fetch(`${BACKEND_URL}/session/start`, { method: 'POST' });
+  if (!res.ok) throw new Error(`session/start failed: ${res.status}`);
+  const data = await res.json();
+  return data.session_id;
+}
+
+async function uploadChunk(blob, index, points) {
+  const form = new FormData();
+  form.append('chunk_index', index);
+  form.append('gps_points', JSON.stringify(points));
+  form.append('video', blob, `chunk_${index}.webm`);
+
+  const res = await fetch(`${BACKEND_URL}/session/${sessionId}/chunk`, {
+    method: 'POST',
+    body: form
+  });
+  if (!res.ok) throw new Error(`chunk ${index} upload failed: ${res.status}`);
+  return res.json();
+}
+
+let isRecording = false;
+let chunkTimer = null;
+const CHUNK_DURATION_MS = 5000;
+
+function recordOneChunk() {
+  if (!isRecording) return;
+
+  const recorder = new MediaRecorder(stream, {
+    mimeType: 'video/webm;codecs=vp8',
+    videoBitsPerSecond: 600000 // ~600 kbps — cuts data usage a lot, still watchable for a "street view" purpose
+  });
+  const parts = [];
+  const pointsForThisChunk = gpsBuffer;
+  gpsBuffer = []; // reset buffer for next chunk
+  const thisIndex = chunkIndex++;
+
+  recorder.ondataavailable = (e) => {
+    if (e.data.size > 0) parts.push(e.data);
+  };
+
+  recorder.onstop = async () => {
+    const blob = new Blob(parts, { type: 'video/webm' });
+    try {
+      const result = await uploadChunk(blob, thisIndex, pointsForThisChunk);
+      chunksUploaded++;
+      totalPointsSent += result.points_received;
+      logLine(`✓ chunk ${thisIndex} uploaded — ${result.points_received} GPS points, ${(result.video_size_bytes/1024).toFixed(1)} KB`, 'chunk-ok');
+      setStatus(`recording... ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent`);
+    } catch (err) {
+      logLine(`✗ chunk ${thisIndex} FAILED: ${err.message}`, 'chunk-fail');
+    }
+
+    // Start the next chunk's recording right away (small gap is fine)
+    if (isRecording) {
+      recordOneChunk();
+    }
+  };
+
+  mediaRecorder = recorder;
+  recorder.start();
+  chunkTimer = setTimeout(() => {
+    if (recorder.state !== 'inactive') recorder.stop();
+  }, CHUNK_DURATION_MS);
+}
+
+startBtn.addEventListener('click', async () => {
+  if (!stream) {
+    setStatus("camera not ready yet");
+    return;
+  }
+  if (!navigator.geolocation) {
+    setStatus("geolocation not supported");
+    return;
+  }
+
+  startBtn.disabled = true;
+  setStatus("starting session on backend... (may take ~30s if server is waking up)");
+
+  try {
+    sessionId = await startSession();
+  } catch (err) {
+    setStatus("could not start session: " + err.message + " — check backend is awake/reachable");
+    startBtn.disabled = false;
+    return;
+  }
+
+  sessionInfoEl.textContent = `session_id: ${sessionId}`;
+  gpsBuffer = [];
+  logEl.innerHTML = '';
+  chunkIndex = 0;
+  chunksUploaded = 0;
+  totalPointsSent = 0;
+  recordStartTime = Date.now();
+
+  watchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      gpsBuffer.push({
+        t: Date.now() - recordStartTime,
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy
+      });
+    },
+    (err) => {
+      logLine("GPS error: " + err.message, 'chunk-fail');
+    },
+    { enableHighAccuracy: true, maximumAge: 0, timeout: 5000 }
+  );
+
+  isRecording = true;
+  recordOneChunk();
+  setStatus("recording...");
+  stopBtn.disabled = false;
+});
+
+stopBtn.addEventListener('click', () => {
+  isRecording = false;
+  clearTimeout(chunkTimer);
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+  }
+  navigator.geolocation.clearWatch(watchId);
+  stopBtn.disabled = true;
+  startBtn.disabled = false;
+  setTimeout(() => {
+    setStatus(`stopped. Total: ${chunksUploaded} chunks uploaded, ${totalPointsSent} GPS points sent. Session: ${sessionId}`);
+  }, 1500); // small delay to let the last chunk's upload finish/log
+});
+
+init();
+</script>
+
+</body>
+</html>
