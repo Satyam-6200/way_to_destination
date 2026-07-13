@@ -24,6 +24,7 @@ import json
 import os
 import re
 import uuid
+from collections import namedtuple
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,71 +55,68 @@ supabase_client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 BASE_DIR = Path(__file__).parent
 
-
-def _load_geonames_index():
-    """GeoNames cities1000 (~200 India entries) — used as a fallback for
-    points outside India, where we don't have the granular dataset."""
-    import reverse_geocoder as rg
-    csv_path = os.path.join(os.path.dirname(rg.__file__), "rg_cities1000.csv")
-    places = []
-    with open(csv_path, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            places.append({
-                "name": row["name"],
-                "admin1": row["admin1"],
-                "admin2": row["admin2"],
-                "cc": row["cc"],
-                "lat": float(row["lat"]),
-                "lng": float(row["lon"]),
-                "_name_lower": row["name"].lower(),
-            })
-    return places
+# namedtuples use far less memory per record than dicts (no per-instance
+# hash table) — matters here since we're holding 165,000+ of these in
+# memory on a 512MB-limited free-tier instance.
+Place = namedtuple("Place", ["name", "admin1", "admin2", "cc", "lat", "lng", "name_lower"])
 
 
 def _load_india_index():
-    """India Post's post-office directory (MIT-licensed, bundled locally as
-    data/india_places.json.gz) — 150,000+ locations covering villages and
+    """India Post's post-office directory (MIT-licensed, originally from the
+    npm package `india-pincode`) — 150,000+ locations covering villages and
     hamlets, not just big towns. This is what actually fixes the accuracy
-    problem GeoNames cities1000 had for rural India (e.g. returning
-    "Bariarpur, Munger" for a point that's really in Jhanjhra, Khagaria)."""
-    gz_path = BASE_DIR / "data" / "india_places.json.gz"
-    with gzip.open(gz_path, "rt", encoding="utf-8") as f:
-        raw = json.load(f)
+    problem a global-cities-only dataset had for rural India (e.g.
+    returning "Bariarpur, Munger" for a point that's really in Jhanjhra,
+    Khagaria).
 
+    Loaded from a pre-slimmed CSV (data/india_places_slim.csv.gz) with only
+    the 5 columns we actually use — the original JSON had 11 columns per
+    row and blew past Render's 512MB free-tier limit just parsing it."""
+    csv_path = BASE_DIR / "data" / "india_places_slim.csv.gz"
     places = []
-    for row in raw:
-        lat, lng = row.get("a"), row.get("n")
-        if lat is None or lng is None:
-            continue
-        raw_name = row.get("o", "")
-        # Dataset has inconsistent suffixes: "X B.O", "X BO", "X S.O" etc
-        # (Branch/Sub/Head post office) — strip them for a cleaner display name
-        clean_name = re.sub(r"\s+[BSH]\.?O\.?$", "", raw_name).strip()
-        places.append({
-            "name": clean_name or raw_name,
-            "admin1": row.get("s", ""),   # state
-            "admin2": row.get("i", ""),   # district
-            "cc": "IN",
-            "lat": float(lat),
-            "lng": float(lng),
-            "_name_lower": clean_name.lower() or raw_name.lower(),
-        })
+    with gzip.open(csv_path, "rt", encoding="utf-8", newline="") as f:
+        reader = csv.reader(f)
+        next(reader)  # header
+        for name, admin1, admin2, lat, lng in reader:
+            places.append(Place(
+                name=name, admin1=admin1, admin2=admin2, cc="IN",
+                lat=float(lat), lng=float(lng), name_lower=name.lower(),
+            ))
     return places
 
 
-GEONAMES_INDEX = _load_geonames_index()
 INDIA_INDEX = _load_india_index()
-
-# KDTree for fast reverse geocoding (coords -> nearest place). Built once
-# at startup since these datasets don't change at runtime.
-_india_coords = np.array([[p["lat"], p["lng"]] for p in INDIA_INDEX])
+_india_coords = np.array([[p.lat, p.lng] for p in INDIA_INDEX], dtype=np.float32)
 INDIA_TREE = cKDTree(_india_coords)
 
-_geonames_coords = np.array([[p["lat"], p["lng"]] for p in GEONAMES_INDEX])
-GEONAMES_TREE = cKDTree(_geonames_coords)
+# GeoNames is a GLOBAL dataset (144,000+ places worldwide) but this app is
+# India-focused — most requests never need it. Loading it eagerly at
+# startup was a big chunk of what was pushing memory over Render's 512MB
+# free-tier limit, so it's lazy: only loaded into memory the first time
+# someone actually queries a point outside India.
+_geonames_index = None
+_geonames_tree = None
 
-# Rough India bounding box — used to decide which dataset to search first
+
+def _ensure_geonames_loaded():
+    global _geonames_index, _geonames_tree
+    if _geonames_index is not None:
+        return
+    csv_path = BASE_DIR / "data" / "geonames_fallback.csv.gz"
+    places = []
+    with gzip.open(csv_path, "rt", encoding="utf-8", newline="") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            places.append(Place(
+                name=row["name"], admin1=row["admin1"], admin2=row["admin2"], cc=row["cc"],
+                lat=float(row["lat"]), lng=float(row["lon"]), name_lower=row["name"].lower(),
+            ))
+    coords = np.array([[p.lat, p.lng] for p in places], dtype=np.float32)
+    _geonames_index = places
+    _geonames_tree = cKDTree(coords)
+
+
+# Rough India bounding box — used to decide which dataset to search
 INDIA_BOUNDS = {"lat_min": 6.0, "lat_max": 37.5, "lng_min": 68.0, "lng_max": 97.5}
 
 
@@ -131,14 +129,9 @@ def reverse_geocode_one(lat, lng):
     if _in_india(lat, lng):
         dist, idx = INDIA_TREE.query([lat, lng])
         return INDIA_INDEX[idx]
-    dist, idx = GEONAMES_TREE.query([lat, lng])
-    return GEONAMES_INDEX[idx]
-
-
-# Combined index for forward text search (place name -> coords) — India's
-# granular dataset first (more results, more useful), GeoNames after for
-# international place names.
-PLACE_INDEX = INDIA_INDEX + GEONAMES_INDEX
+    _ensure_geonames_loaded()
+    dist, idx = _geonames_tree.query([lat, lng])
+    return _geonames_index[idx]
 
 
 def get_db():
@@ -330,19 +323,18 @@ def list_sessions():
 @app.get("/search")
 def search_places(q: str, limit: int = 10):
     """Search for a place by name (used by the map's search box). Searches
-    the granular India post-office dataset (villages, not just big towns)
-    first, then GeoNames for places outside India. Returns coordinates so
-    the frontend can pan/zoom the map there."""
+    the granular India post-office dataset (villages, not just big towns).
+    Returns coordinates so the frontend can pan/zoom the map there."""
     query = q.strip().lower()
     if not query:
         return []
 
     starts_with = []
     contains = []
-    for place in PLACE_INDEX:
-        if place["_name_lower"].startswith(query):
+    for place in INDIA_INDEX:
+        if place.name_lower.startswith(query):
             starts_with.append(place)
-        elif query in place["_name_lower"]:
+        elif query in place.name_lower:
             contains.append(place)
         if len(starts_with) >= limit:
             break
@@ -350,12 +342,12 @@ def search_places(q: str, limit: int = 10):
     results = (starts_with + contains)[:limit]
     return [
         {
-            "name": p["name"],
-            "admin1": p["admin1"],
-            "admin2": p["admin2"],
-            "country_code": p["cc"],
-            "lat": p["lat"],
-            "lng": p["lng"],
+            "name": p.name,
+            "admin1": p.admin1,
+            "admin2": p.admin2,
+            "country_code": p.cc,
+            "lat": p.lat,
+            "lng": p.lng,
         }
         for p in results
     ]
@@ -365,10 +357,10 @@ def search_places(q: str, limit: int = 10):
 def geocode_point(lat: float, lng: float):
     result = reverse_geocode_one(lat, lng)
     return {
-        "name": result["name"],
-        "admin1": result["admin1"],
-        "admin2": result["admin2"],
-        "country_code": result["cc"],
+        "name": result.name,
+        "admin1": result.admin1,
+        "admin2": result.admin2,
+        "country_code": result.cc,
     }
 
 
@@ -379,10 +371,10 @@ def geocode_batch(points: list[dict]):
     results = [reverse_geocode_one(p["lat"], p["lng"]) for p in points]
     return [
         {
-            "name": r["name"],
-            "admin1": r["admin1"],
-            "admin2": r["admin2"],
-            "country_code": r["cc"],
+            "name": r.name,
+            "admin1": r.admin1,
+            "admin2": r.admin2,
+            "country_code": r.cc,
         }
         for r in results
     ]

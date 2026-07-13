@@ -1,7 +1,6 @@
 fastapi
 uvicorn[standard]
 python-multipart
-reverse_geocoder
 psycopg2-binary
 supabase
 numpy

@@ -52,7 +52,19 @@ already used in README.md.
 - [x] 🟡 Village-level location names (current GeoNames dataset is too
       sparse for rural areas — see README's "Planned" table)
       *(Fixed — now using India Post's post-office directory, 150,000+
-      locations, MIT-licensed, bundled in backend/data/india_places.json.gz)*
+      locations, MIT-licensed, bundled in backend/data/india_places.json.gz.
+      Also had to fix a memory crash this caused — see 🔴 item below)*
+- [x] 🔴 **Backend memory crash (Render OOM)** — loading the new 165K-place
+      dataset the naive way (raw JSON with 11 unused columns per row,
+      eagerly loading the global GeoNames fallback too) pushed the process
+      past Render free tier's 512MB limit, crash-looping the backend.
+      Fixed: pre-slimmed the dataset to only the 5 columns actually used,
+      switched from dicts to namedtuples (much less per-record overhead),
+      dropped the `reverse_geocoder` package dependency (we only needed
+      its bundled CSV, now shipped directly), and made the global GeoNames
+      fallback lazy — only loaded into memory if someone actually queries
+      a point outside India. Idle/common-case memory: ~183MB (was crashing
+      past 512MB before).
 - [ ] 🟡 Marker clustering when zoomed out (many overlapping points will
       slow the map down as more paths get recorded)
 - [ ] 🟡 "Paths near me" using the visitor's own GPS location

@@ -204,3 +204,14 @@ Endpoints:
   outside India. Confirmed fix: a test point that used to return
   "Bariarpur, Munger" (wrong — nearest known big town, ~15km off) now
   correctly returns a location in Khagaria district.
+- 2026-07-13: The village-level dataset from the previous entry crashed the
+  backend with OOM errors on Render (512MB free-tier limit) — loading
+  165,627 raw JSON rows (11 columns each, only 5 needed) plus eagerly
+  loading the global 144K-row GeoNames fallback pushed memory well past
+  the limit. Fixed by: pre-slimming the dataset to a 5-column CSV
+  (backend/data/india_places_slim.csv.gz), switching from dicts to
+  namedtuples for the in-memory index, dropping the `reverse_geocoder`
+  package dependency (we only needed its bundled CSV — now shipped
+  directly as backend/data/geonames_fallback.csv.gz), and making the
+  GeoNames fallback lazy-load only when an out-of-India point is queried.
+  Idle memory dropped from crashing past 512MB to ~183MB.
