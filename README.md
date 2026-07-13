@@ -226,3 +226,10 @@ Endpoints:
   individual tappable points once zoomed in past level 16. Cluster icons
   restyled to match the app's gold palette instead of the plugin's
   default blue.
+- 2026-07-13: Implemented continuous auto-advance playback — the actual
+  core "street view" experience that was still missing. Clicking a point
+  now keeps playing into the next chunk automatically when one ends,
+  instead of stopping after 5 seconds, so it feels like walking through
+  the video rather than watching disconnected clips. A toggle in the
+  video panel lets you turn this off if you just want one clip. Shows
+  "chunk X/Y" progress and an end-of-path message when the session ends.

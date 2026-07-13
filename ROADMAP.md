@@ -33,7 +33,7 @@ already used in README.md.
 
 ## 2. Playback / "Street View" Experience
 
-- [ ] 🔴 **Continuous auto-advance across chunks** — this is the actual
+- [x] 🔴 **Continuous auto-advance across chunks** — this is the actual
       core product idea ("chalte hue dekhna"). Right now clicking a point
       plays one 5-second chunk and stops; it should keep playing into the
       next chunk seamlessly, like walking through the video

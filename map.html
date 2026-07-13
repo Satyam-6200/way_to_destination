@@ -158,6 +158,16 @@
     color: var(--ink-muted);
     margin-top: 6px;
   }
+  #autoAdvanceToggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--ink-muted);
+    cursor: pointer;
+  }
+  #autoAdvanceToggle input { cursor: pointer; }
 </style>
 </head>
 <body>
@@ -195,6 +205,10 @@
 <div id="videoPanel">
   <video id="chunkVideo" controls playsinline></video>
   <div id="videoInfo">Tap a point on any path to play its video.</div>
+  <label id="autoAdvanceToggle">
+    <input type="checkbox" id="autoAdvanceCheckbox" checked />
+    Keep walking automatically when a clip ends
+  </label>
 </div>
 <div id="map"></div>
 
@@ -271,21 +285,28 @@ videoEl.onerror = () => {
   if (err) videoInfoEl.textContent = `⚠ Video error: ${reasons[err.code] || err.code}`;
 };
 
-async function playPoint(p, sessionId, chunkStartTime) {
-  const videoUrl = p.video_url;
-  const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] ?? p.t)) / 1000);
+// sessionId -> { pathLayer, markerLayer, bounds, chunks: [{chunk_index, video_url}, ...] }
+const sessionLayers = {};
 
-  if (!videoUrl) {
-    videoInfoEl.textContent = '⚠ No video URL for this point.';
+let autoAdvanceEnabled = true;
+document.getElementById('autoAdvanceCheckbox').addEventListener('change', (e) => {
+  autoAdvanceEnabled = e.target.checked;
+});
+
+async function playChunk(sessionId, chunkIndex, offsetSeconds) {
+  const layer = sessionLayers[sessionId];
+  const chunk = layer && layer.chunks.find(c => c.chunk_index === chunkIndex);
+  if (!chunk || !chunk.video_url) {
+    videoInfoEl.textContent = '⚠ No video for this chunk.';
     return;
   }
 
   videoEl.style.display = 'block';
   videoEl.muted = true;
-  videoInfoEl.textContent = `Checking video for chunk ${p.chunk_index}...`;
+  videoInfoEl.textContent = `Checking video for chunk ${chunkIndex}...`;
 
   try {
-    const check = await fetch(videoUrl, { method: 'GET', headers: { Range: 'bytes=0-1' } });
+    const check = await fetch(chunk.video_url, { method: 'GET', headers: { Range: 'bytes=0-1' } });
     if (!check.ok && check.status !== 206) {
       videoInfoEl.textContent = `⚠ Video not found (HTTP ${check.status}).`;
       return;
@@ -295,11 +316,17 @@ async function playPoint(p, sessionId, chunkStartTime) {
     return;
   }
 
-  videoInfoEl.textContent = `Playing session ${sessionId.slice(0, 8)}… chunk ${p.chunk_index}, ${formatDistance(p.cumulativeDistance)} into path...`;
+  const totalChunks = layer.chunks.length;
+  const posInSession = layer.chunks.findIndex(c => c.chunk_index === chunkIndex) + 1;
+  videoInfoEl.textContent = `Playing session ${sessionId.slice(0, 8)}… chunk ${posInSession}/${totalChunks}` +
+    (autoAdvanceEnabled ? ' — continues automatically' : '');
 
-  const key = `${sessionId}:${p.chunk_index}`;
+  const key = `${sessionId}:${chunkIndex}`;
+  videoEl.dataset.currentSession = sessionId;
+  videoEl.dataset.currentChunkIndex = chunkIndex;
+
   if (videoEl.dataset.currentKey !== key) {
-    videoEl.src = videoUrl;
+    videoEl.src = chunk.video_url;
     videoEl.dataset.currentKey = key;
     videoEl.addEventListener('loadedmetadata', function seekOnce() {
       seekVideo(videoEl, offsetSeconds);
@@ -313,8 +340,27 @@ async function playPoint(p, sessionId, chunkStartTime) {
   });
 }
 
-// sessionId -> { pathLayer, markerLayer, bounds }
-const sessionLayers = {};
+// Continuous "street view" playback — when one chunk ends, automatically
+// keep walking into the next one instead of just stopping.
+videoEl.addEventListener('ended', () => {
+  if (!autoAdvanceEnabled) return;
+  const sessionId = videoEl.dataset.currentSession;
+  const currentIndex = parseInt(videoEl.dataset.currentChunkIndex, 10);
+  const layer = sessionLayers[sessionId];
+  if (!layer) return;
+
+  const next = layer.chunks.find(c => c.chunk_index === currentIndex + 1);
+  if (next) {
+    playChunk(sessionId, next.chunk_index, 0);
+  } else {
+    videoInfoEl.textContent = `End of path reached (session ${sessionId.slice(0, 8)}…).`;
+  }
+});
+
+async function playPoint(p, sessionId, chunkStartTime) {
+  const offsetSeconds = Math.max(0, (p.t - (chunkStartTime[p.chunk_index] ?? p.t)) / 1000);
+  await playChunk(sessionId, p.chunk_index, offsetSeconds);
+}
 
 async function renderSession(sessionData, color) {
   const allPoints = [];
@@ -384,6 +430,7 @@ async function renderSession(sessionData, color) {
     pointCount: allPoints.length,
     startPlace: placeNames[0] || null,
     points: allPoints,
+    chunks: sessionData.chunks.map(c => ({ chunk_index: c.chunk_index, video_url: c.video_url })),
     color
   };
 }
