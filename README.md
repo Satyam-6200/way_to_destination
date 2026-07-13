@@ -215,3 +215,8 @@ Endpoints:
   directly as backend/data/geonames_fallback.csv.gz), and making the
   GeoNames fallback lazy-load only when an out-of-India point is queried.
   Idle memory dropped from crashing past 512MB to ~183MB.
+- 2026-07-13: Added "Paths near me" on the map — a 📍 Near Me button gets
+  the visitor's own GPS location, drops a "you are here" marker, and
+  lists the closest recorded paths sorted by distance (tap one to zoom
+  to it). Distance is computed to the nearest point of each path, not
+  just its bounding box, for accuracy.

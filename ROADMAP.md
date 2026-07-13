@@ -67,7 +67,7 @@ already used in README.md.
       past 512MB before).
 - [ ] 🟡 Marker clustering when zoomed out (many overlapping points will
       slow the map down as more paths get recorded)
-- [ ] 🟡 "Paths near me" using the visitor's own GPS location
+- [x] 🟡 "Paths near me" using the visitor's own GPS location
 - [ ] 🟢 Dedicated page per recorded path (shareable link, not just a map
       popup)
 - [ ] 🟢 Filter paths by date / distance / contributor

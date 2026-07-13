@@ -74,6 +74,45 @@
     font-weight: 600;
     cursor: pointer;
   }
+  #nearMeBtn {
+    padding: 10px 14px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--ink);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  #nearMeBtn:hover { border-color: var(--gold-dim); }
+  #nearMeBtn:disabled { opacity: 0.5; cursor: wait; }
+  #nearbyPanel {
+    padding: 10px 16px;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+  }
+  #nearbyPanel .nearby-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--gold-dim);
+    font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .nearby-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    font-size: 13px;
+  }
+  .nearby-item:last-child { border-bottom: none; }
+  .nearby-item .swatch { width: 8px; height: 24px; border-radius: 4px; flex-shrink: 0; }
+  .nearby-item .name { flex: 1; font-weight: 600; }
+  .nearby-item .dist { color: var(--trail-green); font-family: 'JetBrains Mono', monospace; font-size: 12px; }
   #status {
     padding: 8px 16px;
     background: var(--bg-card);
@@ -134,10 +173,12 @@
       <input id="searchInput" type="text" placeholder="Search for a place (village, town, district)..." autocomplete="off" />
       <div id="searchResults"></div>
     </div>
+    <button id="nearMeBtn">📍 Near Me</button>
     <button id="refreshBtn">Refresh</button>
   </div>
 </div>
 <div id="status">Loading all recorded sessions...</div>
+<div id="nearbyPanel" style="display:none"></div>
 <div id="videoPanel">
   <video id="chunkVideo" controls playsinline></video>
   <div id="videoInfo">Tap a point on any path to play its video.</div>
@@ -152,8 +193,11 @@ const statusEl = document.getElementById('status');
 const searchInput = document.getElementById('searchInput');
 const searchResultsEl = document.getElementById('searchResults');
 const refreshBtn = document.getElementById('refreshBtn');
+const nearMeBtn = document.getElementById('nearMeBtn');
+const nearbyPanel = document.getElementById('nearbyPanel');
 const videoEl = document.getElementById('chunkVideo');
 const videoInfoEl = document.getElementById('videoInfo');
+let userMarker = null;
 
 function setStatus(msg) {
   statusEl.textContent = msg;
@@ -314,7 +358,9 @@ async function renderSession(sessionData, color) {
     bounds: pathLayer.getBounds(),
     totalDistance: cumulativeDistance,
     pointCount: allPoints.length,
-    startPlace: placeNames[0] || null
+    startPlace: placeNames[0] || null,
+    points: allPoints,
+    color
   };
 }
 
@@ -421,6 +467,75 @@ document.addEventListener('click', (e) => {
 });
 
 refreshBtn.addEventListener('click', loadAllSessions);
+
+// --- Near Me: find recorded paths closest to the visitor's own location ---
+function renderNearbyList(nearby) {
+  if (nearby.length === 0) {
+    nearbyPanel.innerHTML = `<div class="nearby-title">Nearby paths</div><div class="muted">No recorded paths yet.</div>`;
+    nearbyPanel.style.display = 'block';
+    return;
+  }
+  nearbyPanel.innerHTML = `<div class="nearby-title">Nearby paths</div>` +
+    nearby.map(n => `
+      <div class="nearby-item" data-session="${n.sessionId}">
+        <div class="swatch" style="background:${n.layer.color}"></div>
+        <div class="name">${n.layer.startPlace ? `${n.layer.startPlace.name}, ${n.layer.startPlace.admin1}` : 'Unknown location'}</div>
+        <div class="dist">${formatDistance(n.minDist)} away</div>
+      </div>
+    `).join('');
+  nearbyPanel.style.display = 'block';
+
+  nearbyPanel.querySelectorAll('.nearby-item').forEach(el => {
+    el.addEventListener('click', () => {
+      const sid = el.dataset.session;
+      const layer = sessionLayers[sid];
+      if (layer) map.fitBounds(layer.bounds, { padding: [40, 40] });
+    });
+  });
+}
+
+nearMeBtn.addEventListener('click', () => {
+  if (!navigator.geolocation) {
+    setStatus('⚠ Geolocation not supported on this device/browser.');
+    return;
+  }
+
+  nearMeBtn.disabled = true;
+  nearMeBtn.textContent = '📍 Locating...';
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const userLat = pos.coords.latitude;
+      const userLng = pos.coords.longitude;
+
+      if (userMarker) map.removeLayer(userMarker);
+      userMarker = L.circleMarker([userLat, userLng], {
+        radius: 8, color: '#2a6fdb', fillColor: '#4f8cf0', fillOpacity: 0.9, weight: 2
+      }).addTo(map).bindPopup('You are here').openPopup();
+
+      map.setView([userLat, userLng], 13);
+
+      const nearby = Object.entries(sessionLayers).map(([sessionId, layer]) => {
+        let minDist = Infinity;
+        for (const p of layer.points) {
+          const d = haversineDistance(userLat, userLng, p.lat, p.lng);
+          if (d < minDist) minDist = d;
+        }
+        return { sessionId, minDist, layer };
+      }).sort((a, b) => a.minDist - b.minDist);
+
+      renderNearbyList(nearby.slice(0, 8));
+      nearMeBtn.disabled = false;
+      nearMeBtn.textContent = '📍 Near Me';
+    },
+    (err) => {
+      setStatus(`⚠ Could not get your location: ${err.message}`);
+      nearMeBtn.disabled = false;
+      nearMeBtn.textContent = '📍 Near Me';
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+});
 
 loadAllSessions();
 </script>
