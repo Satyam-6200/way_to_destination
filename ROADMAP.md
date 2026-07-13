@@ -65,7 +65,7 @@ already used in README.md.
       fallback lazy — only loaded into memory if someone actually queries
       a point outside India. Idle/common-case memory: ~183MB (was crashing
       past 512MB before).
-- [ ] 🟡 Marker clustering when zoomed out (many overlapping points will
+- [x] 🟡 Marker clustering when zoomed out (many overlapping points will
       slow the map down as more paths get recorded)
 - [x] 🟡 "Paths near me" using the visitor's own GPS location
 - [ ] 🟢 Dedicated page per recorded path (shareable link, not just a map

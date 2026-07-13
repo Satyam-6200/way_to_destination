@@ -220,3 +220,9 @@ Endpoints:
   lists the closest recorded paths sorted by distance (tap one to zoom
   to it). Distance is computed to the nearest point of each path, not
   just its bounding box, for accuracy.
+- 2026-07-13: Added marker clustering (Leaflet.markercluster) so the map
+  stays readable and performant as more paths get recorded — nearby
+  points group into a numbered cluster at low zoom, and split back into
+  individual tappable points once zoomed in past level 16. Cluster icons
+  restyled to match the app's gold palette instead of the plugin's
+  default blue.
